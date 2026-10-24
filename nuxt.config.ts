@@ -15,7 +15,7 @@ export default defineNuxtConfig({
     // baseURL instead makes `nuxt generate` pre-render "Redirecting..." pages.
     cdnURL: process.env.PAGES_BASE || '',
     head: {
-      title: 'สมุดของอยากได้',
+      title: 'Wishbook',
       htmlAttrs: { lang: 'th' },
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },

@@ -116,8 +116,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <svg viewBox="0 0 24 24" class="size-5 fill-none stroke-accent stroke-[1.8]" aria-hidden="true">
             <rect x="3.5" y="9" width="17" height="11.5" rx="2" /><path d="M2.5 9h19M12 9v11.5M12 9c-1.5-3.5-6-4.5-6-1.8C6 9 12 9 12 9zm0 0c1.5-3.5 6-4.5 6-1.8C18 9 12 9 12 9z" stroke-linejoin="round" />
           </svg>
-          <!-- The page heading already names the app on phones -->
-          <span class="hidden sm:inline">สมุดของอยากได้</span>
+          Wishbook
         </span>
         <div class="flex items-center gap-3">
           <ThemeToggle />
