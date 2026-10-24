@@ -18,7 +18,6 @@ export interface Wish {
   created: number
   /** Last edit (ms); the Google Sheet sync keeps whichever copy changed last */
   updatedAt: number
-  example?: boolean
 }
 
 export interface Category {
@@ -58,17 +57,14 @@ const KEY = 'wishlist:v1'
 const CAT_KEY = 'wishlist:categories:v1'
 const TOMB_KEY = 'wishlist:tombstones:v1'
 
-const EXAMPLES: Wish[] = [
-  { id: 'ex1', name: 'หูฟังไร้สายตัดเสียงรบกวน', price: 5990, currency: 'THB', link: '', shops: [], note: 'สีดำ รอช่วงลดราคากลางเดือน', cat: '', done: false, created: 3, updatedAt: 0, example: true },
-  { id: 'ex2', name: 'รองเท้าวิ่ง', price: 3200, currency: 'THB', link: '', shops: [], note: 'ไซซ์ 42', cat: '', done: false, created: 2, updatedAt: 0, example: true },
-  { id: 'ex3', name: 'หนังสือนิยายเล่มใหม่', price: 350, currency: 'THB', link: '', shops: [], note: '', cat: '', done: true, created: 1, updatedAt: 0, example: true },
-]
 
 const isUrl = (s: unknown): s is string => typeof s === 'string' && /^https?:\/\//i.test(s)
 export const newId = (prefix: string) => prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 
 function cleanWish(raw: any): Wish | null {
   if (!raw || typeof raw.id !== 'string') return null
+  // Starter examples from earlier versions are dropped.
+  if (raw.example) return null
   return {
     id: raw.id,
     name: String(raw.name || 'ไม่มีชื่อ'),
@@ -81,7 +77,6 @@ function cleanWish(raw: any): Wish | null {
     done: !!raw.done,
     created: Number(raw.created) || 0,
     updatedAt: Number(raw.updatedAt) || Number(raw.created) || 0,
-    example: !!raw.example,
   }
 }
 
@@ -108,8 +103,7 @@ function persist(key: string, value: unknown) {
 }
 
 function createStore() {
-  // First visit: a few marked examples so the page isn't empty.
-  const items = ref<Wish[]>(read(KEY, cleanWish, () => EXAMPLES.map(w => ({ ...w, shops: [...w.shops] }))))
+  const items = ref<Wish[]>(read(KEY, cleanWish, () => []))
   const categories = ref<Category[]>(read(CAT_KEY, cleanCategory, () => []))
 
   const tombstones = ref<Tombstone[]>(read(TOMB_KEY, t => (t?.id && t?.kind ? t as Tombstone : null), () => []))
@@ -178,13 +172,13 @@ function createStore() {
     return w.cat ? categories.value.find(c => c.id === w.cat) : undefined
   }
 
-  /** What the sync sends: everything real (not the starter examples) plus pending deletions. */
+  /** What the sync sends: every item and category plus pending deletions. */
   function syncPayload() {
     const dead = (kind: Tombstone['kind']) =>
       tombstones.value.filter(t => t.kind === kind).map(t => ({ id: t.id, updatedAt: t.updatedAt, deleted: true }))
     return {
       tombstones: tombstones.value.map(t => ({ ...t })),
-      wishes: [...items.value.filter(w => !w.example).map(w => ({ ...w, shops: [...w.shops] })), ...dead('wish')],
+      wishes: [...items.value.map(w => ({ ...w, shops: [...w.shops] })), ...dead('wish')],
       categories: [...categories.value.map(c => ({ ...c })), ...dead('category')],
     }
   }

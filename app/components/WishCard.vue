@@ -50,10 +50,6 @@ const links = computed(() => [
           class="max-w-full shrink-0 truncate rounded-md px-1.5 py-px text-[11px] leading-4 font-medium tracking-normal"
           :style="{ color: CATEGORY_COLORS[category.color], background: `color-mix(in srgb, ${CATEGORY_COLORS[category.color]} 14%, transparent)` }"
         >{{ category.name }}</span>
-        <span
-          v-if="wish.example"
-          class="shrink-0 rounded-md bg-fill px-1.5 py-px text-[11px] leading-4 font-medium tracking-normal text-sub"
-        >ตัวอย่าง</span>
       </h3>
 
       <!-- Edit / delete: always shown on touch, revealed on hover with a mouse -->
