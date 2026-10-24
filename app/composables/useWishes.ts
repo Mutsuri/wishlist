@@ -216,10 +216,17 @@ function createStore() {
     tombstones.value = tombstones.value.filter(t => !sent.has(`${t.id}@${t.updatedAt}`))
   }
 
+  /** Forget this device's copy (after disconnecting from the sheet). */
+  function clearLocal() {
+    items.value = []
+    categories.value = []
+    tombstones.value = []
+  }
+
   return {
     items, categories, upsert, remove, toggle,
     addCategory, updateCategory, removeCategory, categoryOf, nextColor,
-    syncPayload, applyRemote,
+    syncPayload, applyRemote, clearLocal,
   }
 }
 

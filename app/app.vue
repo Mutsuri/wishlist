@@ -99,7 +99,7 @@ async function openCats() {
   if (window.matchMedia('(min-width: 1024px)').matches || !categories.value.length) catManager.value?.focus()
 }
 
-const { sync } = useSync()
+const { sync, connected } = useSync()
 const syncOpen = ref(false)
 const syncPanel = ref<{ focus: () => void }>()
 const syncLabel = computed(() => ({ off: 'ยังไม่ได้เชื่อมต่อ', idle: 'เชื่อมต่อแล้ว', syncing: 'กำลัง sync', error: 'sync ไม่สำเร็จ' })[sync.status])
@@ -134,8 +134,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           Wishbook
         </span>
         <div class="flex items-center gap-2 sm:gap-3">
-          <!-- Google Sheet sync: the dot shows its state -->
+          <!-- Google Sheet sync: the dot shows its state (hidden until connected; the page itself is the connect screen) -->
           <button
+            v-if="connected"
             type="button"
             class="relative grid size-8 place-items-center rounded-full text-sub transition hover:bg-fill hover:text-ink active:scale-90"
             :aria-label="`Google Sheet: ${syncLabel}`"
@@ -149,6 +150,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           </button>
           <ThemeToggle />
           <button
+            v-if="connected"
             type="button"
             class="rounded-full bg-accent px-4 py-1.5 text-[13px] font-medium text-white transition duration-200 hover:-translate-y-px hover:shadow-[0_6px_16px_-4px_var(--color-accent)] hover:brightness-110 active:translate-y-0 active:scale-95"
             @click="openForm(null)"
@@ -160,9 +162,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     </header>
 
     <main class="mx-auto max-w-[1200px] pt-10 pr-[max(20px,env(safe-area-inset-right))] pb-[calc(6rem+env(safe-area-inset-bottom))] pl-[max(20px,env(safe-area-inset-left))] lg:pt-12">
+      <ConnectScreen v-if="!connected" />
+      <template v-else>
       <!-- Hero + summary -->
       <section>
-        <CategoryBar v-model="catFilter" :categories="categories" :counts="catCounts" class="mb-8" @manage="openCats" />
+        <CategoryBar v-model="catFilter" :categories="categories" :counts="catCounts" class="mb-4" @manage="openCats" />
 
         <h1 class="flex items-center gap-3 text-[32px] leading-tight font-semibold tracking-[-0.03em] break-words lg:text-[44px]">
           <span v-if="currentCat" class="size-3 shrink-0 rounded-full lg:size-3.5" :style="{ background: CATEGORY_COLORS[currentCat.color] }" aria-hidden="true" />
@@ -177,9 +181,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
       <div class="mt-6">
         <section class="min-w-0">
-          <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SegmentedControl v-model="filter" :options="filterOptions" label="แสดง" />
-            <PopupMenu v-model="sort" :options="sortOptions" label="เรียง" class="self-start sm:self-auto" />
+            <PopupMenu v-model="sort" :options="sortOptions" label="เรียง" align-right compact class="self-end sm:self-auto" />
           </div>
 
           <ul v-if="view.length" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -214,6 +218,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           </div>
         </section>
       </div>
+      </template>
     </main>
 
     <SheetModal :open="modalOpen" :label="editing ? 'แก้ไข' : 'เพิ่มของใหม่'" @close="closeForm">

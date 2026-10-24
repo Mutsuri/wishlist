@@ -8,6 +8,8 @@ const props = defineProps<{
   hideLabel?: boolean
   /** Open the menu toward the left from the button's right edge at every width */
   alignRight?: boolean
+  /** Smaller button on phones, with the label hidden there */
+  compact?: boolean
 }>()
 const model = defineModel<T>({ required: true })
 
@@ -94,13 +96,19 @@ onBeforeUnmount(() => {
       aria-haspopup="menu"
       :aria-expanded="open"
       :aria-label="`${label}: ${picked?.label ?? ''}`"
-      class="inline-flex items-center gap-1.5 rounded-full bg-fill py-1.5 pr-3 text-[13px] font-medium text-ink ring-1 ring-transparent transition hover:bg-card hover:shadow-sm hover:ring-line active:scale-95"
-      :class="hideLabel ? 'pl-3' : 'pl-4'"
+      class="inline-flex items-center rounded-full bg-fill font-medium text-ink ring-1 ring-transparent transition hover:bg-card hover:shadow-sm hover:ring-line active:scale-95"
+      :class="[
+        compact ? 'gap-1 py-1 pr-2 pl-2.5 text-[12px] sm:gap-1.5 sm:py-1.5 sm:pr-3 sm:text-[13px]' : 'gap-1.5 py-1.5 pr-3 text-[13px]',
+        hideLabel ? 'pl-3' : compact ? 'sm:pl-4' : 'pl-4',
+      ]"
       @click="open ? hide() : show()"
       @keydown.down.prevent="show"
       @keydown.up.prevent="show"
     >
-      <span v-if="!hideLabel" class="text-sub">{{ label }}</span>
+      <span v-if="!hideLabel" class="text-sub" :class="compact && 'hidden sm:inline'">{{ label }}</span>
+      <svg v-if="compact" viewBox="0 0 16 16" class="size-3 shrink-0 fill-none stroke-sub stroke-[1.6] sm:hidden" aria-hidden="true">
+        <path d="M5 3v10M2.5 10.5L5 13l2.5-2.5M11 13V3M8.5 5.5L11 3l2.5 2.5" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
       <span>{{ current }}</span>
       <svg viewBox="0 0 12 12" class="size-2.5 fill-none stroke-sub stroke-[1.8] transition" :class="open && 'rotate-180'" aria-hidden="true">
         <path d="M3 4.5l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" />

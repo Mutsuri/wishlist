@@ -17,7 +17,7 @@ const chips = computed(() => [
 </script>
 
 <template>
-  <div class="-mx-5 flex items-center gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
+  <div class="flex flex-wrap items-center gap-2">
     <button
       v-for="c in chips"
       :key="c.id"

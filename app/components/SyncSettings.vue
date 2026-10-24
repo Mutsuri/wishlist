@@ -1,11 +1,12 @@
 <script setup lang="ts">
 const emit = defineEmits<{ close: [] }>()
-const { sync, syncNow, configure, disconnect } = useSync()
+const { sync, syncNow, connect, disconnect } = useSync()
 
 const url = ref(sync.url)
 const secret = ref(sync.secret)
 const showSecret = ref(false)
 const confirmDisconnect = ref(false)
+const saveError = ref('')
 const urlEl = ref<HTMLInputElement>()
 defineExpose({ focus: () => urlEl.value?.focus() })
 
@@ -15,15 +16,15 @@ const lastSync = computed(() => sync.lastSyncAt
   : 'ยังไม่เคย')
 const dot = computed(() => ({ off: 'bg-sub/50', idle: 'bg-green', syncing: 'bg-accent animate-pulse', error: 'bg-red' })[sync.status])
 
-function save() {
+async function save() {
   if (!url.value.trim() || !secret.value.trim() || urlLooksWrong.value) return
-  configure(url.value, secret.value)
+  // A wrong secret or link is rejected and the current connection stays as it was.
+  saveError.value = await connect(secret.value, url.value)
 }
-function doDisconnect() {
-  disconnect()
-  url.value = ''
-  secret.value = ''
+async function doDisconnect() {
   confirmDisconnect.value = false
+  await disconnect()
+  emit('close')
 }
 
 const row = 'flex min-h-11 items-center gap-3 px-4'
@@ -57,7 +58,7 @@ const group = 'overflow-hidden rounded-xl bg-card divide-y divide-line ring-1 ri
         <button
           v-if="sync.status !== 'off'"
           type="button"
-          class="shrink-0 rounded-full bg-fill px-3 py-1 text-[13px] font-medium text-accent transition hover:bg-accent/10 active:scale-95 disabled:opacity-50"
+          class="shrink-0 self-center rounded-full bg-fill px-3 py-1 text-[13px] font-medium text-accent transition hover:bg-accent/10 active:scale-95 disabled:opacity-50"
           :disabled="sync.status === 'syncing'"
           @click="syncNow()"
         >
@@ -80,7 +81,8 @@ const group = 'overflow-hidden rounded-xl bg-card divide-y divide-line ring-1 ri
           </label>
         </div>
         <p v-if="urlLooksWrong" class="px-4 pt-1.5 text-[13px] text-red">ลิงก์ต้องเป็นลิงก์เว็บแอปของ Apps Script ที่ลงท้ายด้วย /exec</p>
-        <p v-else class="px-4 pt-1.5 text-[13px] text-sub">ลิงก์และรหัสลับเก็บในเครื่องนี้เท่านั้น</p>
+        <p v-else-if="saveError" class="px-4 pt-1.5 text-[13px] text-red" role="alert">เชื่อมต่อไม่ได้: {{ saveError }} (ยังใช้การเชื่อมต่อเดิมอยู่)</p>
+        <p v-else class="px-4 pt-1.5 text-[13px] text-sub">รหัสลับเก็บในเครื่องนี้เท่านั้น</p>
       </div>
 
       <button
@@ -88,12 +90,12 @@ const group = 'overflow-hidden rounded-xl bg-card divide-y divide-line ring-1 ri
         class="rounded-xl bg-accent py-3 text-[16px] font-medium text-white transition hover:brightness-110 active:scale-[0.99] disabled:opacity-40"
         :disabled="!url.trim() || !secret.trim() || urlLooksWrong || sync.status === 'syncing'"
       >
-        บันทึกและ sync
+        บันทึกและเชื่อมต่อใหม่
       </button>
 
       <template v-if="sync.status !== 'off'">
         <div v-if="confirmDisconnect" class="flex items-center gap-3 rounded-xl bg-red/8 px-4 py-3 text-[14px]">
-          <span class="min-w-0 flex-1">เลิกเชื่อมต่อ? ข้อมูลในเครื่องและในชีตยังอยู่ครบ</span>
+          <span class="min-w-0 flex-1">เลิกเชื่อมต่อ? ข้อมูลในเครื่องนี้จะถูกล้าง ข้อมูลในชีตยังอยู่ครบ</span>
           <button type="button" class="shrink-0 font-medium text-sub transition hover:text-ink" @click="confirmDisconnect = false">ยกเลิก</button>
           <button type="button" class="shrink-0 font-semibold text-red transition hover:opacity-70" @click="doDisconnect">เลิกเชื่อมต่อ</button>
         </div>
