@@ -10,6 +10,10 @@ export default defineNuxtConfig({
     plugins: [tailwindcss()],
   },
   app: {
+    // GitHub Pages serves this repo under /wishlist/ (the deploy workflow sets PAGES_BASE).
+    // It's a one-page app with no routes, so only the asset URLs need the prefix: setting
+    // baseURL instead makes `nuxt generate` pre-render "Redirecting..." pages.
+    cdnURL: process.env.PAGES_BASE || '',
     head: {
       title: 'สมุดของอยากได้',
       htmlAttrs: { lang: 'th' },
