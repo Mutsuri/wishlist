@@ -113,7 +113,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <header class="sticky top-0 z-30 border-b border-line bg-bg/75 pt-[env(safe-area-inset-top)] backdrop-blur-xl backdrop-saturate-150">
       <div class="mx-auto flex h-13 max-w-[1200px] items-center justify-between pr-[max(20px,env(safe-area-inset-right))] pl-[max(20px,env(safe-area-inset-left))]">
         <span class="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]">
-          <svg viewBox="0 0 24 24" class="size-5 fill-none stroke-accent stroke-[1.8]" aria-hidden="true">
+          <!-- The gift is drawn low in its box; lift it so it centers on the text -->
+          <svg viewBox="0 0 24 24" class="size-5 -translate-y-[1.2px] fill-none stroke-accent stroke-[1.8]" aria-hidden="true">
             <rect x="3.5" y="9" width="17" height="11.5" rx="2" /><path d="M2.5 9h19M12 9v11.5M12 9c-1.5-3.5-6-4.5-6-1.8C6 9 12 9 12 9zm0 0c1.5-3.5 6-4.5 6-1.8C18 9 12 9 12 9z" stroke-linejoin="round" />
           </svg>
           Wishbook
