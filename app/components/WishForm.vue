@@ -86,6 +86,7 @@ function submit() {
     cat: categories.value.some(c => c.id === f.cat) ? f.cat : '',
     done: props.item?.done ?? false,
     created: props.item?.created ?? Date.now(),
+    updatedAt: Date.now(),
   })
 }
 

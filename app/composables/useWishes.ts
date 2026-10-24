@@ -16,6 +16,8 @@ export interface Wish {
   cat: string
   done: boolean
   created: number
+  /** Last edit (ms); the Google Sheet sync keeps whichever copy changed last */
+  updatedAt: number
   example?: boolean
 }
 
@@ -23,6 +25,14 @@ export interface Category {
   id: string
   name: string
   color: CategoryColor
+  updatedAt: number
+}
+
+/** A deletion still to be sent to the Google Sheet */
+export interface Tombstone {
+  kind: 'wish' | 'category'
+  id: string
+  updatedAt: number
 }
 
 /** Category filter value meaning "items without a category" */
@@ -46,11 +56,12 @@ const COLOR_KEYS = Object.keys(CATEGORY_COLORS) as CategoryColor[]
 
 const KEY = 'wishlist:v1'
 const CAT_KEY = 'wishlist:categories:v1'
+const TOMB_KEY = 'wishlist:tombstones:v1'
 
 const EXAMPLES: Wish[] = [
-  { id: 'ex1', name: 'หูฟังไร้สายตัดเสียงรบกวน', price: 5990, currency: 'THB', link: '', shops: [], note: 'สีดำ รอช่วงลดราคากลางเดือน', cat: '', done: false, created: 3, example: true },
-  { id: 'ex2', name: 'รองเท้าวิ่ง', price: 3200, currency: 'THB', link: '', shops: [], note: 'ไซซ์ 42', cat: '', done: false, created: 2, example: true },
-  { id: 'ex3', name: 'หนังสือนิยายเล่มใหม่', price: 350, currency: 'THB', link: '', shops: [], note: '', cat: '', done: true, created: 1, example: true },
+  { id: 'ex1', name: 'หูฟังไร้สายตัดเสียงรบกวน', price: 5990, currency: 'THB', link: '', shops: [], note: 'สีดำ รอช่วงลดราคากลางเดือน', cat: '', done: false, created: 3, updatedAt: 0, example: true },
+  { id: 'ex2', name: 'รองเท้าวิ่ง', price: 3200, currency: 'THB', link: '', shops: [], note: 'ไซซ์ 42', cat: '', done: false, created: 2, updatedAt: 0, example: true },
+  { id: 'ex3', name: 'หนังสือนิยายเล่มใหม่', price: 350, currency: 'THB', link: '', shops: [], note: '', cat: '', done: true, created: 1, updatedAt: 0, example: true },
 ]
 
 const isUrl = (s: unknown): s is string => typeof s === 'string' && /^https?:\/\//i.test(s)
@@ -69,13 +80,14 @@ function cleanWish(raw: any): Wish | null {
     cat: typeof raw.cat === 'string' ? raw.cat : '',
     done: !!raw.done,
     created: Number(raw.created) || 0,
+    updatedAt: Number(raw.updatedAt) || Number(raw.created) || 0,
     example: !!raw.example,
   }
 }
 
 function cleanCategory(raw: any): Category | null {
   if (!raw || typeof raw.id !== 'string' || !raw.name) return null
-  return { id: raw.id, name: String(raw.name), color: COLOR_KEYS.includes(raw.color) ? raw.color : 'blue' }
+  return { id: raw.id, name: String(raw.name), color: COLOR_KEYS.includes(raw.color) ? raw.color : 'blue', updatedAt: Number(raw.updatedAt) || 0 }
 }
 
 function read<T>(key: string, clean: (raw: any) => T | null, fallback: () => T[]): T[] {
@@ -100,24 +112,36 @@ function createStore() {
   const items = ref<Wish[]>(read(KEY, cleanWish, () => EXAMPLES.map(w => ({ ...w, shops: [...w.shops] }))))
   const categories = ref<Category[]>(read(CAT_KEY, cleanCategory, () => []))
 
-  // Drop references to categories that no longer exist.
-  const known = new Set(categories.value.map(c => c.id))
-  for (const w of items.value) if (w.cat && !known.has(w.cat)) w.cat = ''
+  const tombstones = ref<Tombstone[]>(read(TOMB_KEY, t => (t?.id && t?.kind ? t as Tombstone : null), () => []))
 
   watch(items, v => persist(KEY, v), { deep: true })
   watch(categories, v => persist(CAT_KEY, v), { deep: true })
+  watch(tombstones, v => persist(TOMB_KEY, v), { deep: true })
+
+  // Every edit made here (not ones coming back from the sheet) tells the sync to send.
+  const changed = () => onLocalChange()
+  function bury(kind: Tombstone['kind'], id: string) {
+    tombstones.value = [...tombstones.value.filter(t => t.id !== id), { kind, id, updatedAt: Date.now() }]
+  }
 
   function upsert(w: Wish) {
+    const stamped = { ...w, updatedAt: Date.now() }
     const i = items.value.findIndex(x => x.id === w.id)
-    if (i >= 0) items.value[i] = w
-    else items.value.push(w)
+    if (i >= 0) items.value[i] = stamped
+    else items.value.push(stamped)
+    changed()
   }
   function remove(id: string) {
     items.value = items.value.filter(x => x.id !== id)
+    bury('wish', id)
+    changed()
   }
   function toggle(id: string) {
     const w = items.value.find(x => x.id === id)
-    if (w) w.done = !w.done
+    if (!w) return
+    w.done = !w.done
+    w.updatedAt = Date.now()
+    changed()
   }
 
   /** Next color not yet used, so new categories look distinct. */
@@ -126,24 +150,81 @@ function createStore() {
     return COLOR_KEYS.find(k => !used.has(k)) ?? COLOR_KEYS[categories.value.length % COLOR_KEYS.length]!
   }
   function addCategory(name: string, color: CategoryColor = nextColor()): Category {
-    const c = { id: newId('c'), name: name.trim(), color }
+    const c = { id: newId('c'), name: name.trim(), color, updatedAt: Date.now() }
     categories.value.push(c)
+    changed()
     return c
   }
-  function updateCategory(id: string, patch: Partial<Omit<Category, 'id'>>) {
+  function updateCategory(id: string, patch: Partial<Omit<Category, 'id' | 'updatedAt'>>) {
     const c = categories.value.find(x => x.id === id)
-    if (c) Object.assign(c, patch)
+    if (!c) return
+    Object.assign(c, patch, { updatedAt: Date.now() })
+    changed()
   }
   /** Items in the category stay; they just become uncategorized. */
   function removeCategory(id: string) {
     categories.value = categories.value.filter(c => c.id !== id)
-    for (const w of items.value) if (w.cat === id) w.cat = ''
+    bury('category', id)
+    const now = Date.now()
+    for (const w of items.value) {
+      if (w.cat === id) {
+        w.cat = ''
+        w.updatedAt = now
+      }
+    }
+    changed()
   }
   function categoryOf(w: Wish) {
     return w.cat ? categories.value.find(c => c.id === w.cat) : undefined
   }
 
-  return { items, categories, upsert, remove, toggle, addCategory, updateCategory, removeCategory, categoryOf, nextColor }
+  /** What the sync sends: everything real (not the starter examples) plus pending deletions. */
+  function syncPayload() {
+    const dead = (kind: Tombstone['kind']) =>
+      tombstones.value.filter(t => t.kind === kind).map(t => ({ id: t.id, updatedAt: t.updatedAt, deleted: true }))
+    return {
+      tombstones: tombstones.value.map(t => ({ ...t })),
+      wishes: [...items.value.filter(w => !w.example).map(w => ({ ...w, shops: [...w.shops] })), ...dead('wish')],
+      categories: [...categories.value.map(c => ({ ...c })), ...dead('category')],
+    }
+  }
+
+  /** Merge what the sheet sent back; the copy with the later updatedAt wins. */
+  function applyRemote(remote: { wishes: any[], categories: any[] }, sentTombstones: Tombstone[]) {
+    items.value = mergeRemote(items.value, remote.wishes, cleanWish)
+    categories.value = mergeRemote(categories.value, remote.categories, cleanCategory)
+    // Deletions the sheet now has can be forgotten; ones made during the request stay queued.
+    const sent = new Set(sentTombstones.map(t => `${t.id}@${t.updatedAt}`))
+    tombstones.value = tombstones.value.filter(t => !sent.has(`${t.id}@${t.updatedAt}`))
+  }
+
+  return {
+    items, categories, upsert, remove, toggle,
+    addCategory, updateCategory, removeCategory, categoryOf, nextColor,
+    syncPayload, applyRemote,
+  }
+}
+
+function mergeRemote<T extends { id: string, updatedAt: number }>(local: T[], remote: any[], clean: (raw: any) => T | null): T[] {
+  const byId = new Map(local.map(r => [r.id, r]))
+  for (const raw of remote ?? []) {
+    const id = String(raw?.id ?? '')
+    if (!id) continue
+    const mine = byId.get(id)
+    if (mine && mine.updatedAt >= (Number(raw.updatedAt) || 0)) continue
+    if (raw.deleted) byId.delete(id)
+    else {
+      const r = clean(raw)
+      if (r) byId.set(id, r)
+    }
+  }
+  return [...byId.values()]
+}
+
+let onLocalChange = () => {}
+/** The sync registers here to hear about edits made on this device. */
+export function setLocalChangeListener(fn: () => void) {
+  onLocalChange = fn
 }
 
 let store: ReturnType<typeof createStore> | undefined

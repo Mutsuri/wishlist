@@ -97,11 +97,23 @@ async function openCats() {
   if (window.matchMedia('(min-width: 1024px)').matches || !categories.value.length) catManager.value?.focus()
 }
 
-watch([modalOpen, catsOpen], ([a, b]) => { document.documentElement.style.overflow = a || b ? 'hidden' : '' })
+const { sync } = useSync()
+const syncOpen = ref(false)
+const syncPanel = ref<{ focus: () => void }>()
+const syncLabel = computed(() => ({ off: 'ยังไม่ได้เชื่อมต่อ', idle: 'เชื่อมต่อแล้ว', syncing: 'กำลัง sync', error: 'sync ไม่สำเร็จ' })[sync.status])
+const syncDot = computed(() => ({ off: 'bg-sub/40', idle: 'bg-green', syncing: 'bg-accent animate-pulse', error: 'bg-red' })[sync.status])
+async function openSync() {
+  syncOpen.value = true
+  await nextTick()
+  if (sync.status === 'off') syncPanel.value?.focus()
+}
+
+watch([modalOpen, catsOpen, syncOpen], ([a, b, c]) => { document.documentElement.style.overflow = a || b || c ? 'hidden' : '' })
 const onKey = (e: KeyboardEvent) => {
   if (e.key !== 'Escape') return
   if (modalOpen.value) closeForm()
   else if (catsOpen.value) catsOpen.value = false
+  else if (syncOpen.value) syncOpen.value = false
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -119,14 +131,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           </svg>
           Wishbook
         </span>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Google Sheet sync: the dot shows its state -->
+          <button
+            type="button"
+            class="relative grid size-8 place-items-center rounded-full text-sub transition hover:bg-fill hover:text-ink active:scale-90"
+            :aria-label="`Google Sheet: ${syncLabel}`"
+            :title="`Google Sheet: ${syncLabel}`"
+            @click="openSync"
+          >
+            <svg viewBox="0 0 24 24" class="size-5 fill-none stroke-current stroke-[1.7]" aria-hidden="true">
+              <path d="M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.5 9.6 4.5 4.5 0 0 0 7 18.5z" stroke-linejoin="round" />
+            </svg>
+            <span class="absolute right-1 bottom-1.5 size-2 rounded-full ring-2 ring-bg" :class="syncDot" aria-hidden="true" />
+          </button>
           <ThemeToggle />
           <button
             type="button"
             class="rounded-full bg-accent px-4 py-1.5 text-[13px] font-medium text-white transition duration-200 hover:-translate-y-px hover:shadow-[0_6px_16px_-4px_var(--color-accent)] hover:brightness-110 active:translate-y-0 active:scale-95"
             @click="openForm(null)"
           >
-            + เพิ่มของใหม่
+            + เพิ่ม<span class="hidden sm:inline">ของใหม่</span>
           </button>
         </div>
       </div>
@@ -198,6 +223,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         @save="onSave"
         @cancel="closeForm"
       />
+    </SheetModal>
+    <SheetModal :open="syncOpen" label="Google Sheet" @close="syncOpen = false">
+      <SyncSettings ref="syncPanel" @close="syncOpen = false" />
     </SheetModal>
     <SheetModal :open="catsOpen" label="หมวดหมู่" @close="catsOpen = false">
       <CategoryManager ref="catManager" @close="catsOpen = false" @created="catFilter = $event" />
