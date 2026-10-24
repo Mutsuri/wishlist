@@ -4,7 +4,7 @@
 
 // คอลัมน์ใหม่ต่อท้ายเสมอ ข้อมูลเก่าในชีตจะได้ไม่เลื่อนช่อง
 const SHEETS = {
-  wishes: ['id', 'name', 'price', 'currency', 'link', 'shops', 'note', 'cat', 'done', 'created', 'updatedAt', 'deleted'],
+  wishes: ['id', 'name', 'price', 'currency', 'link', 'shops', 'note', 'cat', 'done', 'created', 'updatedAt', 'deleted', 'when'],
   categories: ['id', 'name', 'color', 'updatedAt', 'deleted'],
 }
 const MONEY = ['price']

@@ -12,6 +12,7 @@ const confirming = ref(false)
 const { rates } = useRates()
 const thb = computed(() => priceThb(props.wish, rates.value))
 const isForeign = computed(() => props.wish.currency !== 'THB' && props.wish.price > 0)
+const when = computed(() => whenInfo(props.wish.when))
 const links = computed(() => [
   ...(props.wish.link ? [{ url: props.wish.link, official: true }] : []),
   ...props.wish.shops.map(url => ({ url, official: false })),
@@ -50,6 +51,13 @@ const links = computed(() => [
           class="max-w-full shrink-0 truncate rounded-md px-1.5 py-px text-[11px] leading-4 font-medium tracking-normal"
           :style="{ color: CATEGORY_COLORS[category.color], background: `color-mix(in srgb, ${CATEGORY_COLORS[category.color]} 14%, transparent)` }"
         >{{ category.name }}</span>
+        <span
+          v-if="when"
+          class="inline-flex max-w-full shrink-0 items-center gap-1.5 rounded-md bg-fill px-1.5 py-px text-[11px] leading-4 font-medium tracking-normal text-sub"
+        >
+          <span class="size-1.5 shrink-0 rounded-full" :style="{ background: when.color }" aria-hidden="true" />
+          <span class="truncate">{{ when.label }}</span>
+        </span>
       </h3>
 
       <!-- Edit / delete: always shown on touch, revealed on hover with a mouse -->

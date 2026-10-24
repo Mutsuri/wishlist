@@ -14,6 +14,8 @@ export interface Wish {
   note: string
   /** Category id, '' when uncategorized */
   cat: string
+  /** When/why to buy: a WHEN preset key, free text of the user's own, or '' */
+  when: string
   done: boolean
   created: number
   /** Last edit (ms); the Google Sheet sync keeps whichever copy changed last */
@@ -53,10 +55,31 @@ export const CATEGORY_COLORS = {
 export type CategoryColor = keyof typeof CATEGORY_COLORS
 const COLOR_KEYS = Object.keys(CATEGORY_COLORS) as CategoryColor[]
 
+/** Ready-made "when to buy" choices, most urgent first (also the order of the "ต้องซื้อก่อน" sort). */
+export const WHEN = {
+  now: { label: 'ซื้อเลย', color: '#30c254' },
+  sale: { label: 'รอลดราคา', color: '#ff9500' },
+  broken: { label: 'รอของเดิมพัง', color: '#ac8e68' },
+  later: { label: 'ซื้อทีหลังได้', color: '#8e8e93' },
+} as const
+export type WhenKey = keyof typeof WHEN
+export const WHEN_KEYS = Object.keys(WHEN) as WhenKey[]
+const CUSTOM_WHEN_COLOR = '#5e5ce6'
+
+/** Label and color for a wish's `when`; null when not set. Free text keeps its own words. */
+export function whenInfo(when: string) {
+  if (!when) return null
+  return when in WHEN ? WHEN[when as WhenKey] : { label: when, color: CUSTOM_WHEN_COLOR }
+}
+/** Sort rank: presets in urgency order, then custom notes, then unset. */
+export function whenRank(when: string) {
+  const i = WHEN_KEYS.indexOf(when as WhenKey)
+  return i >= 0 ? i : when ? WHEN_KEYS.length : WHEN_KEYS.length + 1
+}
+
 const KEY = 'wishlist:v1'
 const CAT_KEY = 'wishlist:categories:v1'
 const TOMB_KEY = 'wishlist:tombstones:v1'
-
 
 const isUrl = (s: unknown): s is string => typeof s === 'string' && /^https?:\/\//i.test(s)
 export const newId = (prefix: string) => prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -74,6 +97,7 @@ function cleanWish(raw: any): Wish | null {
     shops: Array.isArray(raw.shops) ? raw.shops.filter(isUrl) : [],
     note: String(raw.note || ''),
     cat: typeof raw.cat === 'string' ? raw.cat : '',
+    when: typeof raw.when === 'string' ? raw.when.trim().slice(0, 40) : '',
     done: !!raw.done,
     created: Number(raw.created) || 0,
     updatedAt: Number(raw.updatedAt) || Number(raw.created) || 0,

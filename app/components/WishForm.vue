@@ -11,6 +11,7 @@ const { categories, addCategory } = useWishes()
 
 const f = reactive({
   cat: props.item?.cat ?? props.defaultCat ?? '',
+  when: props.item?.when ?? '',
   name: props.item?.name ?? '',
   price: props.item?.price ? String(props.item.price) : '',
   currency: (props.item?.currency ?? 'THB') as Currency,
@@ -48,6 +49,28 @@ async function startNewCat() {
   await nextTick()
   newCatEl.value?.focus()
 }
+// "When to buy": presets, or the user's own words (e.g. "รอเงินเดือนออก")
+const isCustomWhen = computed(() => f.when !== '' && !(f.when in WHEN))
+const writingWhen = ref(false)
+const whenDraft = ref('')
+const whenEl = ref<HTMLInputElement>()
+function pickWhen(key: string) {
+  // Tapping the chosen one again clears it.
+  f.when = f.when === key ? '' : key
+  writingWhen.value = false
+}
+async function startCustomWhen() {
+  whenDraft.value = isCustomWhen.value ? f.when : ''
+  writingWhen.value = true
+  await nextTick()
+  whenEl.value?.focus()
+}
+function saveCustomWhen() {
+  const t = whenDraft.value.trim()
+  if (t) f.when = t
+  writingWhen.value = false
+}
+
 function createCat() {
   const name = newCat.value.trim()
   if (name) f.cat = addCategory(name).id
@@ -84,6 +107,7 @@ function submit() {
     shops,
     note: f.note.trim(),
     cat: categories.value.some(c => c.id === f.cat) ? f.cat : '',
+    when: f.when.trim().slice(0, 40),
     done: props.item?.done ?? false,
     created: props.item?.created ?? Date.now(),
     updatedAt: Date.now(),
@@ -169,6 +193,60 @@ const groupLabel = 'px-4 pb-1.5 text-[13px] text-sub'
             @click="startNewCat"
           >
             + หมวดใหม่
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <p :class="groupLabel">จะซื้อเมื่อไหร่</p>
+        <div role="radiogroup" aria-label="จะซื้อเมื่อไหร่" class="flex flex-wrap gap-2">
+          <button
+            v-for="k in WHEN_KEYS"
+            :key="k"
+            type="button"
+            role="radio"
+            :aria-checked="f.when === k"
+            class="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[14px] font-medium transition duration-200 active:scale-95"
+            :class="f.when === k ? 'bg-ink text-bg' : 'bg-card text-ink ring-1 ring-line hover:-translate-y-px hover:shadow-sm hover:ring-sub/30'"
+            @click="pickWhen(k)"
+          >
+            <span class="size-2 rounded-full" :style="{ background: WHEN[k].color }" aria-hidden="true" />
+            {{ WHEN[k].label }}
+          </button>
+          <!-- The user's own words -->
+          <div v-if="writingWhen" class="inline-flex items-center gap-1 rounded-full bg-card py-1 pr-1 pl-3.5 ring-1 ring-accent">
+            <input
+              id="wf-when"
+              ref="whenEl"
+              v-model="whenDraft"
+              class="w-36 bg-transparent text-[14px] outline-none placeholder:text-sub/60"
+              maxlength="40"
+              placeholder="เช่น รอเงินเดือนออก"
+              autocomplete="off"
+              @keydown.enter.prevent="saveCustomWhen"
+              @keydown.esc.stop.prevent="writingWhen = false"
+            >
+            <button type="button" class="rounded-full bg-accent px-3 py-0.5 text-[13px] font-medium text-white transition hover:brightness-110 active:scale-95" @click="saveCustomWhen">ตกลง</button>
+          </div>
+          <button
+            v-else-if="isCustomWhen"
+            type="button"
+            role="radio"
+            aria-checked="true"
+            class="inline-flex max-w-full items-center gap-2 rounded-full bg-ink px-3.5 py-1.5 text-[14px] font-medium text-bg transition active:scale-95"
+            :title="'แก้ข้อความ'"
+            @click="startCustomWhen"
+          >
+            <span class="truncate">{{ f.when }}</span>
+            <span class="opacity-60" aria-hidden="true">✎</span>
+          </button>
+          <button
+            v-if="!writingWhen"
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[14px] font-medium text-accent ring-1 ring-accent/30 ring-inset transition hover:bg-accent/10 active:scale-95"
+            @click="isCustomWhen ? (f.when = '') : startCustomWhen()"
+          >
+            {{ isCustomWhen ? 'ล้าง' : '+ พิมพ์เอง' }}
           </button>
         </div>
       </div>

@@ -32,7 +32,7 @@ const scoped = computed(() => {
 })
 
 type Filter = 'want' | 'done' | 'all'
-type Sort = 'new' | 'cheap' | 'pricey'
+type Sort = 'new' | 'when' | 'cheap' | 'pricey'
 const filter = ref<Filter>('want')
 const sort = ref<Sort>('new')
 const filterOptions = computed<{ value: Filter, label: string }[]>(() => [
@@ -42,6 +42,7 @@ const filterOptions = computed<{ value: Filter, label: string }[]>(() => [
 ])
 const sortOptions: { value: Sort, label: string }[] = [
   { value: 'new', label: 'เพิ่มล่าสุด' },
+  { value: 'when', label: 'ต้องซื้อก่อน' },
   { value: 'cheap', label: 'ราคาถูกก่อน' },
   { value: 'pricey', label: 'ราคาแพงก่อน' },
 ]
@@ -65,6 +66,7 @@ const view = computed(() => {
   const list = scoped.value.filter(i => filter.value === 'all' || (filter.value === 'done' ? i.done : !i.done))
   const cmp: Record<Sort, (a: Wish, b: Wish) => number> = {
     new: (a, b) => b.created - a.created,
+    when: (a, b) => (whenRank(a.when) - whenRank(b.when)) || (b.created - a.created),
     cheap: (a, b) => thb(a) - thb(b),
     pricey: (a, b) => thb(b) - thb(a),
   }
