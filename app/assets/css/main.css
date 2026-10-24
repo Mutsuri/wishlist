@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+/* Apple-style system colors. Light first; dark applies when chosen (data-theme="dark")
+   or when the OS is dark and the user hasn't picked light. */
+:root {
+  color-scheme: light;
+  --c-bg: #f5f5f7;
+  --c-card: #ffffff;
+  --c-ink: #1d1d1f;
+  --c-sub: #6e6e73;
+  --c-line: rgb(0 0 0 / 0.08);
+  --c-fill: rgb(118 118 128 / 0.12);
+  --c-accent: #0071e3;
+  --c-orange: #ff9500;
+  --c-red: #ff3b30;
+  --c-green: #34c759;
+  --c-shadow: rgb(0 0 0 / 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg: #000000;
+    --c-card: #1c1c1e;
+    --c-ink: #f5f5f7;
+    --c-sub: #98989d;
+    --c-line: rgb(255 255 255 / 0.1);
+    --c-fill: rgb(118 118 128 / 0.24);
+    --c-accent: #2997ff;
+    --c-orange: #ff9f0a;
+    --c-red: #ff453a;
+    --c-green: #30d158;
+    --c-shadow: rgb(0 0 0 / 0);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --c-bg: #000000;
+  --c-card: #1c1c1e;
+  --c-ink: #f5f5f7;
+  --c-sub: #98989d;
+  --c-line: rgb(255 255 255 / 0.1);
+  --c-fill: rgb(118 118 128 / 0.24);
+  --c-accent: #2997ff;
+  --c-orange: #ff9f0a;
+  --c-red: #ff453a;
+  --c-green: #30d158;
+  --c-shadow: rgb(0 0 0 / 0);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Noto Sans Thai", "Segoe UI", sans-serif;
+  --color-bg: var(--c-bg);
+  --color-card: var(--c-card);
+  --color-ink: var(--c-ink);
+  --color-sub: var(--c-sub);
+  --color-line: var(--c-line);
+  --color-fill: var(--c-fill);
+  --color-accent: var(--c-accent);
+  --color-orange: var(--c-orange);
+  --color-red: var(--c-red);
+  --color-green: var(--c-green);
+  --color-shadow: var(--c-shadow);
+}
+
+html,
+body {
+  background: var(--c-bg);
+  color: var(--c-ink);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* In the base layer so utilities like outline-none on text fields win.
+   Text fields show focus with the caret, as in iOS grouped lists. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 2px;
+  }
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+  }
+
+  /* Tailwind v4 leaves buttons on the default arrow; anything clickable gets the hand. */
+  button:not(:disabled),
+  a[href],
+  [role="radio"],
+  [role="menuitemradio"],
+  select {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* Secondary controls fade in on hover where a mouse exists; touch keeps them visible */
+@media (hover: hover) {
+  .group:not(:hover):not(:focus-within) .reveal { opacity: 0; }
+}
+
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+/* iOS-style bottom sheet (phone only) */
+.sheet-enter-active .sheet-backdrop,
+.sheet-leave-active .sheet-backdrop { transition: opacity 0.3s ease; }
+.sheet-enter-active .sheet-panel,
+.sheet-leave-active .sheet-panel { transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1); }
+.sheet-enter-from .sheet-backdrop,
+.sheet-leave-to .sheet-backdrop { opacity: 0; }
+.sheet-enter-from .sheet-panel,
+.sheet-leave-to .sheet-panel { transform: translateY(100%); }
+
+/* PC: the same modal pops in centered instead of sliding up */
+@media (min-width: 1024px) {
+  .sheet-enter-active .sheet-panel,
+  .sheet-leave-active .sheet-panel { transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease; }
+  .sheet-enter-from .sheet-panel,
+  .sheet-leave-to .sheet-panel { transform: translateY(12px) scale(0.96); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
+}
