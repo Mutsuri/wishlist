@@ -4,7 +4,8 @@
 
 /** Currencies the app offers. `decimals` is how many places prices are shown with. */
 export const CURRENCIES = {
-  THB: { symbol: '฿', name: 'บาท', decimals: 2 },
+  // Whole baht, matching how the card's main price is shown
+  THB: { symbol: '฿', name: 'บาท', decimals: 0 },
   USD: { symbol: '$', name: 'ดอลลาร์สหรัฐ', decimals: 2 },
   HKD: { symbol: 'HK$', name: 'ดอลลาร์ฮ่องกง', decimals: 2 },
   JPY: { symbol: '¥', name: 'เยน', decimals: 0 },

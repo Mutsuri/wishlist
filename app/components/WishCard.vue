@@ -6,13 +6,15 @@ const props = defineProps<{
   /** Shown as a tag; omit when the list is already filtered to this category */
   category?: Category
 }>()
-const emit = defineEmits<{ toggle: [], edit: [], remove: [] }>()
+const emit = defineEmits<{ toggle: [], star: [], edit: [], remove: [] }>()
 
 const confirming = ref(false)
 const { rates } = useRates()
 const thb = computed(() => priceThb(props.wish, rates.value))
 const isForeign = computed(() => props.wish.currency !== 'THB' && props.wish.price > 0)
 const when = computed(() => whenInfo(props.wish.when))
+const low = computed(() => lowestSeen(props.wish))
+const lowDate = computed(() => low.value ? new Date(low.value.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '')
 const links = computed(() => [
   ...(props.wish.link ? [{ url: props.wish.link, official: true }] : []),
   ...props.wish.shops.map(url => ({ url, official: false })),
@@ -60,8 +62,21 @@ const links = computed(() => [
         </span>
       </h3>
 
-      <!-- Edit / delete: always shown on touch, revealed on hover with a mouse -->
-      <div class="reveal -mt-1 -mr-2 flex shrink-0 transition-opacity">
+      <!-- Star stays visible once set; edit / delete show on touch, or on hover with a mouse -->
+      <div class="-mt-1 -mr-2 flex shrink-0">
+        <button
+          type="button"
+          class="grid size-8 place-items-center rounded-full transition hover:bg-fill active:scale-90"
+          :class="wish.star ? 'text-[#ffb800]' : 'reveal text-sub hover:text-ink'"
+          :aria-label="wish.star ? 'เอาดาวออก' : 'ติดดาว'"
+          :aria-pressed="wish.star"
+          @click="emit('star')"
+        >
+          <svg viewBox="0 0 20 20" class="size-[17px] stroke-current stroke-[1.5]" :class="wish.star ? 'fill-current' : 'fill-none'" aria-hidden="true">
+            <path d="M10 2.8l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 8.1l5-.7L10 2.8z" stroke-linejoin="round" />
+          </svg>
+        </button>
+      <div class="reveal flex transition-opacity">
         <button
           type="button"
           class="grid size-8 place-items-center rounded-full text-sub transition hover:bg-fill hover:text-ink active:scale-90"
@@ -79,6 +94,7 @@ const links = computed(() => [
           <svg viewBox="0 0 20 20" class="size-4 fill-none stroke-current stroke-[1.6]" aria-hidden="true"><path d="M4 6h12M8 6V4.5h4V6M5.5 6l.8 10h7.4l.8-10" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
       </div>
+      </div>
     </div>
 
     <!-- Body: price, note and shop buttons on one rhythm -->
@@ -89,6 +105,10 @@ const links = computed(() => [
       </p>
       <p v-if="isForeign && thb !== null" class="mt-1 text-[12px] text-sub tabular-nums">
         {{ money(wish.price, wish.currency) }} · {{ rateLine(wish.currency, rates) }}
+      </p>
+      <p v-if="low" class="mt-1 flex items-center gap-1 text-[12px] font-medium text-green tabular-nums">
+        <svg viewBox="0 0 12 12" class="size-3 fill-none stroke-current stroke-[1.6]" aria-hidden="true"><path d="M6 2.5v7M3 6.5l3 3 3-3" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        ต่ำสุดที่เคยเจอ {{ money(low.price, wish.currency) }} · {{ lowDate }}
       </p>
       <p v-if="wish.note" class="mt-1.5 line-clamp-2 text-[14px] leading-snug break-words text-sub">{{ wish.note }}</p>
 

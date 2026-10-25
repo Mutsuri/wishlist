@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import type { Currency, Wish } from '~/composables/useWishes'
+import type { Currency, PricePoint, Wish } from '~/composables/useWishes'
 
 const props = defineProps<{
   item: Wish | null
   /** Category preselected for a new item (the one currently being viewed) */
   defaultCat?: string
+  /** New items start starred when added from the starred view */
+  defaultStar?: boolean
 }>()
 const emit = defineEmits<{ save: [Wish], cancel: [] }>()
 const { categories, addCategory } = useWishes()
@@ -17,6 +19,7 @@ const f = reactive({
   currency: (props.item?.currency ?? 'THB') as Currency,
   link: props.item?.link ?? '',
   shops: [...(props.item?.shops ?? [])],
+  prices: (props.item?.prices ?? []).map(p => ({ ...p })),
   note: props.item?.note ?? '',
 })
 const error = ref('')
@@ -34,6 +37,9 @@ const converted = computed(() => {
   const per = thbPer(f.currency, rates.value)
   return f.currency !== 'THB' && per !== null && parsedPrice.value > 0 ? baht(parsedPrice.value * per) : ''
 })
+const lowest = computed(() => f.prices.reduce<PricePoint | null>((m, p) => (!m || p.price < m.price ? p : m), null))
+const seenDate = (at: number) => new Date(at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+
 const currencyOptions = CURRENCY_CODES.map(c => ({
   value: c,
   label: `${CURRENCIES[c].symbol}  ${CURRENCIES[c].name}`,
@@ -108,6 +114,9 @@ function submit() {
     note: f.note.trim(),
     cat: categories.value.some(c => c.id === f.cat) ? f.cat : '',
     when: f.when.trim().slice(0, 40),
+    star: props.item?.star ?? props.defaultStar ?? false,
+    // The store adds the new price to this log when it changed.
+    prices: f.prices,
     done: props.item?.done ?? false,
     created: props.item?.created ?? Date.now(),
     updatedAt: Date.now(),
@@ -155,6 +164,26 @@ const groupLabel = 'px-4 pb-1.5 text-[13px] text-sub'
           <button type="button" class="font-medium text-accent transition-opacity hover:opacity-70" @click="refreshRate(true)">ลองใหม่</button>
         </template>
       </p>
+
+      <!-- Price log: every saved price change lands here; newest first -->
+      <div v-if="f.prices.length">
+        <p :class="groupLabel">ราคาที่เคยเจอ<span v-if="lowest"> · ต่ำสุด {{ money(lowest.price, f.currency) }}</span></p>
+        <div :class="group">
+          <div v-for="p in [...f.prices].reverse()" :key="p.at" :class="[row, 'min-h-10']">
+            <span class="w-16 shrink-0 text-[14px] text-sub tabular-nums">{{ seenDate(p.at) }}</span>
+            <span class="flex-1 text-[15px] tabular-nums" :class="p === lowest && 'font-semibold text-green'">{{ money(p.price, f.currency) }}</span>
+            <button
+              type="button"
+              class="grid size-[22px] shrink-0 place-items-center rounded-full bg-red text-white transition hover:brightness-110 active:scale-90"
+              :aria-label="`ลบราคา ${money(p.price, f.currency)} วันที่ ${seenDate(p.at)}`"
+              @click="f.prices = f.prices.filter(x => x !== p)"
+            >
+              <span class="h-0.5 w-2.5 rounded bg-white" />
+            </button>
+          </div>
+        </div>
+        <p class="px-4 pt-1.5 text-[13px] text-sub">แก้ราคาด้านบนแล้วบันทึก ราคาใหม่จะต่อท้ายรายการนี้เอง</p>
+      </div>
 
       <div>
         <p :class="groupLabel">หมวด</p>

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { Wish } from '~/composables/useWishes'
 
-const { items, categories, upsert, remove, toggle, categoryOf } = useWishes()
+const { items, categories, upsert, remove, toggle, toggleStar, categoryOf } = useWishes()
 const { rates } = useRates()
 /** Baht value for totals and sorting; a foreign price with no rate yet counts as 0 */
 const thb = (w: Wish) => priceThb(w, rates.value) ?? 0
 
-/** '' = all, NO_CATEGORY = uncategorized, otherwise a category id */
+/** '' = all, STARRED = starred, NO_CATEGORY = uncategorized, otherwise a category id */
 const catFilter = ref('')
 try { catFilter.value = localStorage.getItem('wishlist:view-cat') ?? '' }
 catch { /* ignore */ }
@@ -14,19 +14,21 @@ watch(catFilter, (v) => { try { localStorage.setItem('wishlist:view-cat', v) } c
 const currentCat = computed(() => categories.value.find(c => c.id === catFilter.value))
 // A deleted category falls back to showing everything.
 watchEffect(() => {
-  if (catFilter.value && catFilter.value !== NO_CATEGORY && !currentCat.value) catFilter.value = ''
+  if (catFilter.value && catFilter.value !== NO_CATEGORY && catFilter.value !== STARRED && !currentCat.value) catFilter.value = ''
 })
 const catCounts = computed(() => {
-  const m: Record<string, number> = { '': items.value.length }
+  const m: Record<string, number> = { '': items.value.length, [STARRED]: 0 }
   for (const w of items.value) {
     const k = w.cat || NO_CATEGORY
     m[k] = (m[k] ?? 0) + 1
+    if (w.star) m[STARRED]!++
   }
   return m
 })
 /** Items in the selected category; everything below (summary, list) works on this. */
 const scoped = computed(() => {
   if (!catFilter.value) return items.value
+  if (catFilter.value === STARRED) return items.value.filter(w => w.star)
   if (catFilter.value === NO_CATEGORY) return items.value.filter(w => !w.cat)
   return items.value.filter(w => w.cat === catFilter.value)
 })
@@ -60,7 +62,9 @@ const total = computed(() => want.value.reduce((a, i) => a + thb(i), 0))
 const doneCount = computed(() => scoped.value.length - want.value.length)
 const doneTotal = computed(() => scoped.value.reduce((a, i) => a + (i.done ? thb(i) : 0), 0))
 
-const heading = computed(() => currentCat.value?.name ?? (catFilter.value === NO_CATEGORY ? 'ไม่มีหมวด' : 'ของที่อยากได้'))
+const heading = computed(() => currentCat.value?.name
+  ?? ({ [NO_CATEGORY]: 'ไม่มีหมวด', [STARRED]: 'ติดดาว' } as Record<string, string>)[catFilter.value]
+  ?? 'ของที่อยากได้')
 
 const view = computed(() => {
   const list = scoped.value.filter(i => filter.value === 'all' || (filter.value === 'done' ? i.done : !i.done))
@@ -70,7 +74,8 @@ const view = computed(() => {
     cheap: (a, b) => thb(a) - thb(b),
     pricey: (a, b) => thb(b) - thb(a),
   }
-  return [...list].sort((a, b) => (Number(a.done) - Number(b.done)) || cmp[sort.value](a, b))
+  // Not-yet-bought before bought; starred first within each; then the chosen order.
+  return [...list].sort((a, b) => (Number(a.done) - Number(b.done)) || (Number(b.star) - Number(a.star)) || cmp[sort.value](a, b))
 })
 
 async function openForm(w: Wish | null) {
@@ -161,38 +166,40 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </div>
     </header>
 
-    <main class="mx-auto max-w-[1200px] pt-10 pr-[max(20px,env(safe-area-inset-right))] pb-[calc(6rem+env(safe-area-inset-bottom))] pl-[max(20px,env(safe-area-inset-left))] lg:pt-12">
+    <main class="mx-auto max-w-[1200px] pr-[max(20px,env(safe-area-inset-right))] pb-[calc(6rem+env(safe-area-inset-bottom))] pl-[max(20px,env(safe-area-inset-left))] pt-6 lg:pt-10">
       <ConnectScreen v-if="!connected" />
       <template v-else>
       <!-- Hero + summary -->
       <section>
         <CategoryBar v-model="catFilter" :categories="categories" :counts="catCounts" class="mb-4" @manage="openCats" />
 
-        <h1 class="flex items-center gap-3 text-[32px] leading-tight font-semibold tracking-[-0.03em] break-words lg:text-[44px]">
+        <h1 class="flex items-center gap-3 text-[30px] leading-[1.15] font-semibold tracking-[-0.03em] break-words lg:text-[40px]">
           <span v-if="currentCat" class="size-3 shrink-0 rounded-full lg:size-3.5" :style="{ background: CATEGORY_COLORS[currentCat.color] }" aria-hidden="true" />
           <span class="min-w-0">{{ heading }}</span>
         </h1>
-        <p class="mt-1.5 text-[16px] text-sub lg:text-[18px]">
+        <p class="mt-1 text-[15px] leading-snug text-sub lg:text-[17px]">
           <template v-if="catFilter && scoped.length">ทั้งชุด {{ scoped.length }} ชิ้น รวม {{ baht(total + doneTotal) }}</template>
           <template v-else-if="catFilter">ยังไม่มีของในหมวดนี้</template>
           <template v-else>จดไว้ที่เดียว ได้มาแล้วก็ติ๊กออก</template>
         </p>
       </section>
 
-      <div class="mt-6">
+      <div class="mt-5">
         <section class="min-w-0">
           <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SegmentedControl v-model="filter" :options="filterOptions" label="แสดง" />
             <PopupMenu v-model="sort" :options="sortOptions" label="เรียง" align-right compact class="self-end sm:self-auto" />
           </div>
 
-          <ul v-if="view.length" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <!-- items-start: each card is as tall as its own content, not the tallest in its row -->
+          <ul v-if="view.length" class="grid items-start gap-4 md:grid-cols-2 lg:grid-cols-3">
             <WishCard
               v-for="w in view"
               :key="w.id"
               :wish="w"
               :category="catFilter ? undefined : categoryOf(w)"
               @toggle="toggle(w.id)"
+              @star="toggleStar(w.id)"
               @edit="openForm(w)"
               @remove="onRemove(w.id)"
             />
@@ -202,10 +209,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               <rect x="3.5" y="9" width="17" height="11.5" rx="2" /><path d="M2.5 9h19M12 9v11.5M12 9c-1.5-3.5-6-4.5-6-1.8C6 9 12 9 12 9zm0 0c1.5-3.5 6-4.5 6-1.8C18 9 12 9 12 9z" stroke-linejoin="round" />
             </svg>
             <p class="mt-4 text-[19px] font-semibold tracking-[-0.01em]">
-              {{ filter === 'done' ? 'ยังไม่มีของที่ได้มา' : (catFilter ? 'ยังไม่มีของในหมวดนี้' : 'ยังไม่มีของในสมุด') }}
+              {{ filter === 'done' ? 'ยังไม่มีของที่ได้มา' : catFilter === STARRED ? 'ยังไม่มีของที่ติดดาว' : (catFilter ? 'ยังไม่มีของในหมวดนี้' : 'ยังไม่มีของในสมุด') }}
             </p>
             <p class="mt-1 text-[15px] text-sub">
-              {{ filter === 'done' ? 'กดวงกลมหน้าของที่ได้มาแล้ว มันจะมาอยู่ตรงนี้' : (currentCat ? `ของที่เพิ่มตอนนี้จะอยู่ในหมวด “${currentCat.name}”` : 'จดของชิ้นแรกที่อยากได้ไว้ตรงนี้') }}
+              {{ filter === 'done' ? 'กดวงกลมหน้าของที่ได้มาแล้ว มันจะมาอยู่ตรงนี้'
+                : catFilter === STARRED ? 'กด ☆ บนการ์ดเพื่อเก็บของที่อยากได้ที่สุดไว้ตรงนี้'
+                  : (currentCat ? `ของที่เพิ่มตอนนี้จะอยู่ในหมวด “${currentCat.name}”` : 'จดของชิ้นแรกที่อยากได้ไว้ตรงนี้') }}
             </p>
             <button
               v-if="filter !== 'done'"
@@ -227,6 +236,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         :key="formKey"
         :item="editing"
         :default-cat="currentCat?.id"
+        :default-star="catFilter === STARRED"
         @save="onSave"
         @cancel="closeForm"
       />

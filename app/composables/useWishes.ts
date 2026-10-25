@@ -16,10 +16,29 @@ export interface Wish {
   cat: string
   /** When/why to buy: a WHEN preset key, free text of the user's own, or '' */
   when: string
+  /** Starred items sort before the rest */
+  star: boolean
+  /** Every price seen for this item (in its own currency), oldest first */
+  prices: PricePoint[]
   done: boolean
   created: number
   /** Last edit (ms); the Google Sheet sync keeps whichever copy changed last */
   updatedAt: number
+}
+
+export interface PricePoint {
+  price: number
+  /** When it was seen (ms) */
+  at: number
+}
+
+/** Keep the price log from growing without end. */
+const MAX_PRICES = 60
+
+/** The cheapest price ever logged, when it's below the current one. */
+export function lowestSeen(w: Pick<Wish, 'price' | 'prices'>): PricePoint | null {
+  const low = w.prices.reduce<PricePoint | null>((m, p) => (p.price > 0 && (!m || p.price < m.price) ? p : m), null)
+  return low && low.price < w.price ? low : null
 }
 
 export interface Category {
@@ -38,6 +57,8 @@ export interface Tombstone {
 
 /** Category filter value meaning "items without a category" */
 export const NO_CATEGORY = '__none'
+/** Category filter value meaning "starred items" (across all categories) */
+export const STARRED = '__star'
 
 // Apple system colors; mid tones that read on both light and dark backgrounds.
 export const CATEGORY_COLORS = {
@@ -57,7 +78,6 @@ const COLOR_KEYS = Object.keys(CATEGORY_COLORS) as CategoryColor[]
 
 /** Ready-made "when to buy" choices, most urgent first (also the order of the "ต้องซื้อก่อน" sort). */
 export const WHEN = {
-  now: { label: 'ซื้อเลย', color: '#30c254' },
   sale: { label: 'รอลดราคา', color: '#ff9500' },
   broken: { label: 'รอของเดิมพัง', color: '#ac8e68' },
   later: { label: 'ซื้อทีหลังได้', color: '#8e8e93' },
@@ -97,11 +117,29 @@ function cleanWish(raw: any): Wish | null {
     shops: Array.isArray(raw.shops) ? raw.shops.filter(isUrl) : [],
     note: String(raw.note || ''),
     cat: typeof raw.cat === 'string' ? raw.cat : '',
-    when: typeof raw.when === 'string' ? raw.when.trim().slice(0, 40) : '',
+    // "now" (ซื้อเลย) was a preset that's since been removed.
+    when: typeof raw.when === 'string' && raw.when !== 'now' ? raw.when.trim().slice(0, 40) : '',
+    star: !!raw.star,
+    prices: cleanPrices(raw.prices),
     done: !!raw.done,
     created: Number(raw.created) || 0,
     updatedAt: Number(raw.updatedAt) || Number(raw.created) || 0,
   }
+}
+
+/** Accepts an array, or the JSON text the sheet stores it as. */
+function cleanPrices(raw: unknown): PricePoint[] {
+  let list = raw
+  if (typeof list === 'string') {
+    try { list = JSON.parse(list || '[]') }
+    catch { list = [] }
+  }
+  if (!Array.isArray(list)) return []
+  return list
+    .map(p => ({ price: Number(p?.price) || 0, at: Number(p?.at) || 0 }))
+    .filter(p => p.price > 0 && p.at > 0)
+    .sort((a, b) => a.at - b.at)
+    .slice(-MAX_PRICES)
 }
 
 function cleanCategory(raw: any): Category | null {
@@ -143,7 +181,12 @@ function createStore() {
   }
 
   function upsert(w: Wish) {
-    const stamped = { ...w, updatedAt: Date.now() }
+    const now = Date.now()
+    // A new price (or the first one) goes into the item's price log.
+    let prices = w.prices
+    const last = prices.at(-1)
+    if (w.price > 0 && last?.price !== w.price) prices = [...prices, { price: w.price, at: now }].slice(-MAX_PRICES)
+    const stamped = { ...w, prices, updatedAt: now }
     const i = items.value.findIndex(x => x.id === w.id)
     if (i >= 0) items.value[i] = stamped
     else items.value.push(stamped)
@@ -158,6 +201,13 @@ function createStore() {
     const w = items.value.find(x => x.id === id)
     if (!w) return
     w.done = !w.done
+    w.updatedAt = Date.now()
+    changed()
+  }
+  function toggleStar(id: string) {
+    const w = items.value.find(x => x.id === id)
+    if (!w) return
+    w.star = !w.star
     w.updatedAt = Date.now()
     changed()
   }
@@ -202,7 +252,7 @@ function createStore() {
       tombstones.value.filter(t => t.kind === kind).map(t => ({ id: t.id, updatedAt: t.updatedAt, deleted: true }))
     return {
       tombstones: tombstones.value.map(t => ({ ...t })),
-      wishes: [...items.value.map(w => ({ ...w, shops: [...w.shops] })), ...dead('wish')],
+      wishes: [...items.value.map(w => ({ ...w, shops: [...w.shops], prices: w.prices.map(p => ({ ...p })) })), ...dead('wish')],
       categories: [...categories.value.map(c => ({ ...c })), ...dead('category')],
     }
   }
@@ -224,7 +274,7 @@ function createStore() {
   }
 
   return {
-    items, categories, upsert, remove, toggle,
+    items, categories, upsert, remove, toggle, toggleStar,
     addCategory, updateCategory, removeCategory, categoryOf, nextColor,
     syncPayload, applyRemote, clearLocal,
   }

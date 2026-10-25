@@ -4,14 +4,16 @@
 
 // คอลัมน์ใหม่ต่อท้ายเสมอ ข้อมูลเก่าในชีตจะได้ไม่เลื่อนช่อง
 const SHEETS = {
-  wishes: ['id', 'name', 'price', 'currency', 'link', 'shops', 'note', 'cat', 'done', 'created', 'updatedAt', 'deleted', 'when'],
+  wishes: ['id', 'name', 'price', 'currency', 'link', 'shops', 'note', 'cat', 'done', 'created', 'updatedAt', 'deleted', 'when', 'star', 'prices'],
   categories: ['id', 'name', 'color', 'updatedAt', 'deleted'],
 }
 const MONEY = ['price']
 const NUMBERS = ['created', 'updatedAt']
-const BOOLEANS = ['done', 'deleted']
+const BOOLEANS = ['done', 'deleted', 'star']
 // ลิงก์ร้านอื่นหลายลิงก์ เก็บในช่องเดียว คั่นด้วยขึ้นบรรทัดใหม่
 const LISTS = ['shops']
+// ประวัติราคาที่เจอ [{ price, at }] เก็บเป็นข้อความ JSON ในช่องเดียว
+const JSONS = ['prices']
 
 // สุ่มรหัสลับครั้งแรก (มีอยู่แล้วจะไม่เปลี่ยน) แล้วแสดงในบันทึกการดำเนินการ เอาไปใส่ในแอปหน้า Google Sheet
 function setupSecret() {
@@ -107,6 +109,7 @@ function toCell(col, v) {
   if (MONEY.includes(col)) return Number(v) || 0
   if (BOOLEANS.includes(col)) return v ? 'TRUE' : ''
   if (LISTS.includes(col)) return Array.isArray(v) ? v.join('\n') : ''
+  if (JSONS.includes(col)) return Array.isArray(v) && v.length ? JSON.stringify(v) : ''
   return v === undefined || v === null ? '' : v
 }
 
@@ -115,6 +118,10 @@ function fromCell(col, v) {
   if (NUMBERS.includes(col)) return Number(v) || 0
   if (BOOLEANS.includes(col)) return v === true || v === 'TRUE'
   if (LISTS.includes(col)) return String(v || '').split('\n').filter(Boolean)
+  if (JSONS.includes(col)) {
+    try { return JSON.parse(v || '[]') }
+    catch (e) { return [] }
+  }
   return String(v)
 }
 
