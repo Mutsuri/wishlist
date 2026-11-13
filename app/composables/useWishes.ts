@@ -22,8 +22,6 @@ export interface Wish {
   prices: PricePoint[]
   /** Id of the main item this one is bought together with (e.g. a pencil for an iPad), or '' */
   parent: string
-  /** Product picture (a URL to an image on the web), or '' */
-  image: string
   done: boolean
   created: number
   /** Last edit (ms); the Google Sheet sync keeps whichever copy changed last */
@@ -153,7 +151,6 @@ function cleanWish(raw: any): Wish | null {
     star: !!raw.star,
     prices: cleanPrices(raw.prices),
     parent: typeof raw.parent === 'string' && raw.parent !== raw.id ? raw.parent : '',
-    image: isUrl(raw.image) ? raw.image : '',
     done: !!raw.done,
     created: Number(raw.created) || 0,
     updatedAt: Number(raw.updatedAt) || Number(raw.created) || 0,

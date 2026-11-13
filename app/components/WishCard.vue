@@ -21,8 +21,6 @@ const kidPrice = (w: Wish) => {
   return t !== null ? baht(t) : money(w.price, w.currency)
 }
 
-const imageBroken = ref(false)
-watch(() => props.wish.image, () => { imageBroken.value = false })
 const { rates } = useRates()
 const thb = computed(() => priceThb(props.wish, rates.value))
 const isForeign = computed(() => props.wish.currency !== 'THB' && props.wish.price > 0)
@@ -125,8 +123,6 @@ const links = computed(() => [
 
     <!-- Body: price, note and shop buttons on one rhythm -->
     <div class="flex flex-col pl-8">
-      <div class="flex items-start gap-3">
-      <div class="min-w-0 flex-1">
       <!-- Foreign prices show their baht value first; until a rate loads, the original amount -->
       <p class="mt-2.5 text-[24px] leading-none font-semibold tracking-[-0.02em] tabular-nums">
         {{ !wish.price ? '—' : thb !== null ? baht(thb) : money(wish.price, wish.currency) }}
@@ -139,18 +135,6 @@ const links = computed(() => [
         ต่ำสุดที่เคยเจอ {{ money(low.price, wish.currency) }} · {{ lowDate }}
       </p>
       <p v-if="wish.note" class="mt-1.5 line-clamp-2 text-[14px] leading-snug break-words text-sub">{{ wish.note }}</p>
-      </div>
-      <!-- Product picture; a link that stops loading just hides it -->
-      <img
-        v-if="wish.image && !imageBroken"
-        :src="wish.image"
-        alt=""
-        loading="lazy"
-        referrerpolicy="no-referrer"
-        class="mt-2.5 size-16 shrink-0 rounded-xl bg-white object-contain ring-1 ring-line"
-        @error="imageBroken = true"
-      >
-      </div>
 
       <!-- Bought together: a receipt-style list under the price, then the whole set's total -->
       <div v-if="kids.length" class="mt-3.5">

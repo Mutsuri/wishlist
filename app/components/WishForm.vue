@@ -26,11 +26,7 @@ const f = reactive({
   shops: [...(props.item?.shops ?? [])],
   prices: (props.item?.prices ?? []).map(p => ({ ...p })),
   note: props.item?.note ?? '',
-  image: props.item?.image ?? '',
 })
-/** The picture preview hides itself when the address doesn't load */
-const imageBroken = ref(false)
-watch(() => f.image, () => { imageBroken.value = false })
 const error = ref('')
 const nameEl = ref<HTMLInputElement>()
 const shopsEl = ref<HTMLElement>()
@@ -145,7 +141,6 @@ function submit() {
     cat: mainItem.value ? mainItem.value.cat : categories.value.some(c => c.id === f.cat) ? f.cat : '',
     when: mainItem.value ? '' : f.when.trim().slice(0, 40),
     star: props.item?.star ?? props.defaultStar ?? false,
-    image: normUrl(f.image) || '',
     parent: !hasChildren.value && items.value.some(w => w.id === f.parent && !w.parent) ? f.parent : '',
     // The store adds the new price to this log when it changed.
     prices: f.prices,
@@ -182,29 +177,7 @@ const groupLabel = 'px-4 pb-1.5 text-[13px] text-sub'
           <input id="wf-price" v-model="f.price" :class="[input, 'tabular-nums']" inputmode="decimal" placeholder="0" autocomplete="off">
           <PopupMenu v-model="f.currency" :options="currencyOptions" label="สกุลเงิน" hide-label align-right class="shrink-0" />
         </div>
-        <div :class="row">
-          <label for="wf-image" :class="rowLabel">รูป</label>
-          <input id="wf-image" v-model="f.image" :class="input" type="url" placeholder="วางลิงก์รูปสินค้า" autocomplete="off">
-          <img
-            v-if="f.image && !imageBroken"
-            :src="f.image"
-            alt=""
-            referrerpolicy="no-referrer"
-            class="size-8 shrink-0 rounded-md bg-fill object-cover ring-1 ring-line"
-            @error="imageBroken = true"
-          >
-          <button
-            v-if="f.image"
-            type="button"
-            class="grid size-[22px] shrink-0 place-items-center rounded-full bg-sub/30 text-bg transition hover:bg-sub/50 active:scale-90"
-            aria-label="ล้างรูป"
-            @click="f.image = ''"
-          >
-            <svg viewBox="0 0 12 12" class="size-2.5 stroke-current stroke-2" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6" stroke-linecap="round" /></svg>
-          </button>
-        </div>
       </div>
-      <p v-if="f.image && imageBroken" class="-mt-4 px-4 text-[13px] text-red">เปิดรูปจากลิงก์นี้ไม่ได้ ลองคลิกขวาที่รูปในเว็บร้าน แล้วเลือกคัดลอกที่อยู่รูปภาพ</p>
       <!-- Foreign price: show what it is in baht at the current rate -->
       <p v-if="f.currency !== 'THB'" class="-mt-4 flex flex-wrap items-center gap-x-1.5 px-4 text-[13px] text-sub" aria-live="polite">
         <template v-if="rates && thbPer(f.currency, rates) !== null">

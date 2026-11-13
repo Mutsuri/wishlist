@@ -224,7 +224,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <p class="mt-1 text-[15px] leading-snug text-sub lg:text-[17px]">
           <template v-if="catFilter && scoped.length">
             {{ scoped.length }} ชิ้น · รวม <span class="font-medium text-ink tabular-nums">{{ baht(total + doneTotal) }}</span>
-            <template v-if="doneCount && want.length"> · ยังขาด <span class="tabular-nums">{{ baht(total) }}</span></template>
+            <template v-if="doneCount && want.length"> · ยังไม่ได้ซื้อ <span class="tabular-nums">{{ baht(total) }}</span></template>
             <template v-else-if="!want.length"> · ได้ครบแล้ว</template>
           </template>
           <template v-else-if="catFilter">ยังไม่มีของในหมวดนี้</template>
