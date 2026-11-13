@@ -6,6 +6,8 @@
 const SHEETS = {
   wishes: ['id', 'name', 'price', 'currency', 'link', 'shops', 'note', 'cat', 'done', 'created', 'updatedAt', 'deleted', 'when', 'star', 'prices', 'parent'],
   categories: ['id', 'name', 'color', 'updatedAt', 'deleted'],
+  // ป้าย "จะซื้อเมื่อไหร่" ที่เพิ่ม/ลบเองได้
+  tags: ['id', 'label', 'color', 'updatedAt', 'deleted'],
 }
 const MONEY = ['price']
 const NUMBERS = ['created', 'updatedAt']
@@ -44,6 +46,7 @@ function doPost(e) {
       ok: true,
       wishes: mergeSheet(ss, 'wishes', req.wishes || []),
       categories: mergeSheet(ss, 'categories', req.categories || []),
+      tags: mergeSheet(ss, 'tags', req.tags || []),
     })
   } catch (err) {
     return json({ ok: false, error: String(err) })

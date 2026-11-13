@@ -25,7 +25,8 @@ const confirming = ref(false)
 const { rates } = useRates()
 const thb = computed(() => priceThb(props.wish, rates.value))
 const isForeign = computed(() => props.wish.currency !== 'THB' && props.wish.price > 0)
-const when = computed(() => whenInfo(props.wish.when))
+const { tagOf } = useWishes()
+const when = computed(() => tagOf(props.wish))
 const low = computed(() => lowestSeen(props.wish))
 const lowDate = computed(() => low.value ? new Date(low.value.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '')
 const links = computed(() => [
@@ -136,6 +137,42 @@ const links = computed(() => [
       </p>
       <p v-if="wish.note" class="mt-1.5 line-clamp-2 text-[14px] leading-snug break-words text-sub">{{ wish.note }}</p>
 
+      <!-- Bought together: a receipt-style list under the price, then the whole set's total -->
+      <div v-if="kids.length" class="mt-3.5">
+        <ul class="border-t border-line">
+          <li
+            v-for="k in kids"
+            :key="k.id"
+            class="flex min-h-10 items-center gap-2.5 border-b border-line py-2"
+            :class="k.done && 'opacity-55'"
+          >
+            <button
+              type="button"
+              class="grid size-4 shrink-0 place-items-center rounded-full border-[1.5px] transition hover:scale-110 active:scale-90"
+              :class="k.done ? 'border-accent bg-accent' : 'border-sub/40 hover:border-accent'"
+              :aria-label="k.done ? `ย้าย ${k.name} กลับไปยังไม่ได้` : `ทำเครื่องหมายว่าได้ ${k.name} แล้ว`"
+              @click="emit('toggleChild', k.id)"
+            >
+              <svg v-if="k.done" viewBox="0 0 24 24" class="size-2.5 fill-none stroke-white stroke-[4]" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+            <button
+              type="button"
+              class="min-w-0 flex-1 truncate text-left text-[14px] transition hover:text-accent"
+              :class="k.done && 'line-through decoration-sub/50'"
+              :title="`แก้ไข ${k.name}`"
+              @click="emit('editChild', k)"
+            >
+              {{ k.name }}
+            </button>
+            <span class="shrink-0 text-[14px] text-sub tabular-nums">{{ kidPrice(k) }}</span>
+          </li>
+        </ul>
+        <div class="flex items-baseline justify-between pt-2.5">
+          <span class="text-[13px] text-sub">ทั้งชุด {{ kids.length + 1 }} ชิ้น</span>
+          <span class="text-[17px] font-semibold tracking-[-0.01em] tabular-nums">{{ baht(setTotal) }}</span>
+        </div>
+      </div>
+
       <!-- Shop buttons: Official is the filled primary, other shops are tinted -->
       <div v-if="links.length" class="mt-3.5 flex flex-wrap gap-2">
         <a
@@ -156,38 +193,6 @@ const links = computed(() => [
           <span class="truncate">{{ l.official ? 'Official' : shopName(l.url) }}</span>
           <svg viewBox="0 0 12 12" class="size-2.5 shrink-0 fill-none stroke-current stroke-[1.6] opacity-70" aria-hidden="true"><path d="M3.5 8.5l5-5M4.5 3.5h4v4" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </a>
-      </div>
-
-      <!-- Bought together: accessories listed under the main item, with the set's total -->
-      <div v-if="kids.length" class="mt-4 rounded-xl bg-fill/60 px-3 py-2">
-        <p class="pb-1 text-[11px] font-medium tracking-wide text-sub">ซื้อคู่กัน</p>
-        <ul class="divide-y divide-line">
-          <li v-for="k in kids" :key="k.id" class="group/kid flex min-h-9 items-center gap-2.5 py-1.5" :class="k.done && 'opacity-55'">
-            <button
-              type="button"
-              class="grid size-4 shrink-0 place-items-center rounded-full border-[1.5px] transition hover:scale-110 active:scale-90"
-              :class="k.done ? 'border-accent bg-accent' : 'border-sub/40 hover:border-accent'"
-              :aria-label="k.done ? `ย้าย ${k.name} กลับไปยังไม่ได้` : `ทำเครื่องหมายว่าได้ ${k.name} แล้ว`"
-              @click="emit('toggleChild', k.id)"
-            >
-              <svg v-if="k.done" viewBox="0 0 24 24" class="size-2.5 fill-none stroke-white stroke-[4]" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
-            </button>
-            <button
-              type="button"
-              class="min-w-0 flex-1 truncate text-left text-[14px] font-medium transition hover:text-accent"
-              :class="k.done && 'line-through decoration-sub/50'"
-              :title="`แก้ไข ${k.name}`"
-              @click="emit('editChild', k)"
-            >
-              {{ k.name }}
-            </button>
-            <span class="shrink-0 text-[14px] font-semibold tabular-nums">{{ kidPrice(k) }}</span>
-          </li>
-        </ul>
-        <p class="flex items-baseline justify-between border-t border-line pt-1.5 text-[12px] text-sub">
-          <span>รวมทั้งชุด</span>
-          <span class="text-[14px] font-semibold text-ink tabular-nums">{{ baht(setTotal) }}</span>
-        </p>
       </div>
 
       <div v-if="confirming" class="mt-3.5 flex items-center gap-3 rounded-xl bg-red/8 px-3 py-2 text-[13px]">

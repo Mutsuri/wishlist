@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Wish } from '~/composables/useWishes'
 
-const { items, categories, upsert, remove, toggle, toggleStar, categoryOf, parentOf, childrenOf } = useWishes()
+const { items, categories, upsert, remove, toggle, toggleStar, categoryOf, parentOf, childrenOf, tagRank } = useWishes()
 const { rates } = useRates()
 /** Baht value for totals and sorting; a foreign price with no rate yet counts as 0 */
 const thb = (w: Wish) => priceThb(w, rates.value) ?? 0
@@ -71,7 +71,7 @@ const view = computed(() => {
   const list = scoped.value.filter(i => !parentOf(i) && (filter.value === 'all' || (filter.value === 'done' ? i.done : !i.done)))
   const cmp: Record<Sort, (a: Wish, b: Wish) => number> = {
     new: (a, b) => b.created - a.created,
-    when: (a, b) => (whenRank(a.when) - whenRank(b.when)) || (b.created - a.created),
+    when: (a, b) => (tagRank(a) - tagRank(b)) || (b.created - a.created),
     cheap: (a, b) => thb(a) - thb(b),
     pricey: (a, b) => thb(b) - thb(a),
   }

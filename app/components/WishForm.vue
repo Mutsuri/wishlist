@@ -11,7 +11,7 @@ const props = defineProps<{
   defaultParent?: string
 }>()
 const emit = defineEmits<{ save: [Wish], cancel: [] }>()
-const { items, categories, addCategory, childrenOf } = useWishes()
+const { items, categories, tags, addCategory, childrenOf, addTag, removeTag } = useWishes()
 
 const startParent = props.item?.parent ?? props.defaultParent ?? ''
 const f = reactive({
@@ -36,6 +36,8 @@ defineExpose({ focus: () => nameEl.value?.focus() })
 
 // "Buy together with": one level only, so an item that already has accessories can't be one.
 const hasChildren = computed(() => !!props.item && childrenOf(props.item.id).length > 0)
+/** The main item this one is bought with; an accessory follows its category and timing */
+const mainItem = computed(() => hasChildren.value ? undefined : items.value.find(w => w.id === f.parent && !w.parent))
 const parentOptions = computed(() => [
   { value: '', label: 'ไม่ซื้อคู่กับอะไร', short: 'ไม่มี' },
   ...items.value
@@ -70,26 +72,35 @@ async function startNewCat() {
   await nextTick()
   newCatEl.value?.focus()
 }
-// "When to buy": presets, or the user's own words (e.g. "รอเงินเดือนออก")
-const isCustomWhen = computed(() => f.when !== '' && !(f.when in WHEN))
+// "When to buy" tags: pick one, add your own (it's kept for next time), or delete one everywhere.
 const writingWhen = ref(false)
 const whenDraft = ref('')
 const whenEl = ref<HTMLInputElement>()
-function pickWhen(key: string) {
+const editingTags = ref(false)
+const confirmTag = ref<string | null>(null)
+function pickWhen(id: string) {
   // Tapping the chosen one again clears it.
-  f.when = f.when === key ? '' : key
+  f.when = f.when === id ? '' : id
   writingWhen.value = false
 }
 async function startCustomWhen() {
-  whenDraft.value = isCustomWhen.value ? f.when : ''
+  whenDraft.value = ''
   writingWhen.value = true
+  editingTags.value = false
   await nextTick()
   whenEl.value?.focus()
 }
 function saveCustomWhen() {
   const t = whenDraft.value.trim()
-  if (t) f.when = t
+  if (t) f.when = addTag(t).id
   writingWhen.value = false
+}
+const tagUses = (id: string) => items.value.filter(w => w.when === id).length
+function deleteTag(id: string) {
+  removeTag(id)
+  if (f.when === id) f.when = ''
+  confirmTag.value = null
+  if (!tags.value.length) editingTags.value = false
 }
 
 function createCat() {
@@ -127,8 +138,8 @@ function submit() {
     link,
     shops,
     note: f.note.trim(),
-    cat: categories.value.some(c => c.id === f.cat) ? f.cat : '',
-    when: f.when.trim().slice(0, 40),
+    cat: mainItem.value ? mainItem.value.cat : categories.value.some(c => c.id === f.cat) ? f.cat : '',
+    when: mainItem.value ? '' : f.when.trim().slice(0, 40),
     star: props.item?.star ?? props.defaultStar ?? false,
     parent: !hasChildren.value && items.value.some(w => w.id === f.parent && !w.parent) ? f.parent : '',
     // The store adds the new price to this log when it changed.
@@ -212,11 +223,13 @@ const groupLabel = 'px-4 pb-1.5 text-[13px] text-sub'
           </div>
         </div>
         <p class="px-4 pt-1.5 text-[13px] text-sub">
-          {{ hasChildren ? 'ชิ้นนี้มีของที่ซื้อคู่กันอยู่ เลยไปซ้อนในชิ้นอื่นไม่ได้' : 'เช่น Apple Pencil คู่กับ iPad จะแสดงอยู่ในการ์ดของ iPad' }}
+          {{ hasChildren ? 'ชิ้นนี้มีของที่ซื้อคู่กันอยู่ เลยไปซ้อนในชิ้นอื่นไม่ได้'
+            : mainItem ? `อยู่ในการ์ดของ ${mainItem.name} หมวดกับจะซื้อเมื่อไหร่ใช้ตามชิ้นนั้น`
+              : 'เช่น Apple Pencil คู่กับ iPad จะแสดงอยู่ในการ์ดของ iPad' }}
         </p>
       </div>
 
-      <div>
+      <div v-if="!mainItem">
         <p :class="groupLabel">หมวด</p>
         <div role="radiogroup" aria-label="หมวด" class="flex flex-wrap gap-2">
           <button
@@ -257,23 +270,54 @@ const groupLabel = 'px-4 pb-1.5 text-[13px] text-sub'
         </div>
       </div>
 
-      <div>
-        <p :class="groupLabel">จะซื้อเมื่อไหร่</p>
-        <div role="radiogroup" aria-label="จะซื้อเมื่อไหร่" class="flex flex-wrap gap-2">
+      <div v-if="!mainItem">
+        <div class="flex items-baseline justify-between pr-1">
+          <p :class="groupLabel">จะซื้อเมื่อไหร่</p>
           <button
-            v-for="k in WHEN_KEYS"
-            :key="k"
+            v-if="tags.length"
             type="button"
-            role="radio"
-            :aria-checked="f.when === k"
-            class="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[14px] font-medium transition duration-200 active:scale-95"
-            :class="f.when === k ? 'bg-ink text-bg' : 'bg-card text-ink ring-1 ring-line hover:-translate-y-px hover:shadow-sm hover:ring-sub/30'"
-            @click="pickWhen(k)"
+            class="text-[13px] font-medium text-accent transition-opacity hover:opacity-70"
+            @click="editingTags = !editingTags; confirmTag = null; writingWhen = false"
           >
-            <span class="size-2 rounded-full" :style="{ background: WHEN[k].color }" aria-hidden="true" />
-            {{ WHEN[k].label }}
+            {{ editingTags ? 'เสร็จ' : 'แก้ไขป้าย' }}
           </button>
-          <!-- The user's own words -->
+        </div>
+        <!-- Deleting a tag removes it from every item that has it -->
+        <div v-if="confirmTag" class="mb-2 flex items-center gap-3 rounded-xl bg-red/8 px-3 py-2 text-[13px]" role="alert">
+          <span class="min-w-0 flex-1">
+            ลบป้าย “{{ tags.find(t => t.id === confirmTag)?.label }}”?
+            <span v-if="tagUses(confirmTag)" class="text-sub">ของ {{ tagUses(confirmTag) }} ชิ้นที่ใช้ป้ายนี้จะไม่มีป้าย</span>
+          </span>
+          <button type="button" class="shrink-0 font-medium text-sub transition hover:text-ink" @click="confirmTag = null">ยกเลิก</button>
+          <button type="button" class="shrink-0 font-semibold text-red transition hover:opacity-70" @click="deleteTag(confirmTag)">ลบ</button>
+        </div>
+        <div role="radiogroup" aria-label="จะซื้อเมื่อไหร่" class="flex flex-wrap gap-2">
+          <template v-for="t in tags" :key="t.id">
+            <!-- Edit mode: tap a tag's minus to delete it -->
+            <button
+              v-if="editingTags"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-full bg-card py-1.5 pr-3.5 pl-1.5 text-[14px] font-medium text-ink ring-1 ring-line transition active:scale-95"
+              :aria-label="`ลบป้าย ${t.label}`"
+              @click="confirmTag = t.id"
+            >
+              <span class="grid size-[18px] place-items-center rounded-full bg-red text-white"><span class="h-0.5 w-2 rounded bg-white" /></span>
+              {{ t.label }}
+            </button>
+            <button
+              v-else
+              type="button"
+              role="radio"
+              :aria-checked="f.when === t.id"
+              class="inline-flex max-w-full items-center gap-2 rounded-full px-3.5 py-1.5 text-[14px] font-medium transition duration-200 active:scale-95"
+              :class="f.when === t.id ? 'bg-ink text-bg' : 'bg-card text-ink ring-1 ring-line hover:-translate-y-px hover:shadow-sm hover:ring-sub/30'"
+              @click="pickWhen(t.id)"
+            >
+              <span class="size-2 shrink-0 rounded-full" :style="{ background: t.color }" aria-hidden="true" />
+              <span class="truncate">{{ t.label }}</span>
+            </button>
+          </template>
+          <!-- The user's own words become a tag that can be picked again -->
           <div v-if="writingWhen" class="inline-flex items-center gap-1 rounded-full bg-card py-1 pr-1 pl-3.5 ring-1 ring-accent">
             <input
               id="wf-when"
@@ -286,27 +330,15 @@ const groupLabel = 'px-4 pb-1.5 text-[13px] text-sub'
               @keydown.enter.prevent="saveCustomWhen"
               @keydown.esc.stop.prevent="writingWhen = false"
             >
-            <button type="button" class="rounded-full bg-accent px-3 py-0.5 text-[13px] font-medium text-white transition hover:brightness-110 active:scale-95" @click="saveCustomWhen">ตกลง</button>
+            <button type="button" class="rounded-full bg-accent px-3 py-0.5 text-[13px] font-medium text-white transition hover:brightness-110 active:scale-95" @click="saveCustomWhen">เพิ่ม</button>
           </div>
           <button
-            v-else-if="isCustomWhen"
-            type="button"
-            role="radio"
-            aria-checked="true"
-            class="inline-flex max-w-full items-center gap-2 rounded-full bg-ink px-3.5 py-1.5 text-[14px] font-medium text-bg transition active:scale-95"
-            :title="'แก้ข้อความ'"
-            @click="startCustomWhen"
-          >
-            <span class="truncate">{{ f.when }}</span>
-            <span class="opacity-60" aria-hidden="true">✎</span>
-          </button>
-          <button
-            v-if="!writingWhen"
+            v-else-if="!editingTags"
             type="button"
             class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[14px] font-medium text-accent ring-1 ring-accent/30 ring-inset transition hover:bg-accent/10 active:scale-95"
-            @click="isCustomWhen ? (f.when = '') : startCustomWhen()"
+            @click="startCustomWhen"
           >
-            {{ isCustomWhen ? 'ล้าง' : '+ พิมพ์เอง' }}
+            + ป้ายใหม่
           </button>
         </div>
       </div>

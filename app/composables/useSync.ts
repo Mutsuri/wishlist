@@ -44,14 +44,14 @@ function loadConfig() {
   catch { /* ignore */ }
 }
 
-type SheetReply = { ok: true, wishes: unknown[], categories: unknown[] } | { ok: false, error: string }
+type SheetReply = { ok: true, wishes: unknown[], categories: unknown[], tags?: unknown[] } | { ok: false, error: string }
 
 async function post(url: string, secret: string): Promise<SheetReply> {
-  const { wishes, categories } = useWishes().syncPayload()
+  const { wishes, categories, tags } = useWishes().syncPayload()
   // text/plain so the browser skips the CORS preflight, which Apps Script doesn't answer
   const res = await fetch(url, {
     method: 'POST',
-    body: JSON.stringify({ secret, wishes, categories }),
+    body: JSON.stringify({ secret, wishes, categories, tags }),
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
   })
   return await res.json() as SheetReply

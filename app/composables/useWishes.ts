@@ -14,7 +14,7 @@ export interface Wish {
   note: string
   /** Category id, '' when uncategorized */
   cat: string
-  /** When/why to buy: a WHEN preset key, free text of the user's own, or '' */
+  /** When/why to buy: a Tag id, or '' */
   when: string
   /** Starred items sort before the rest */
   star: boolean
@@ -52,7 +52,7 @@ export interface Category {
 
 /** A deletion still to be sent to the Google Sheet */
 export interface Tombstone {
-  kind: 'wish' | 'category'
+  kind: 'wish' | 'category' | 'tag'
   id: string
   updatedAt: number
 }
@@ -78,30 +78,52 @@ export const CATEGORY_COLORS = {
 export type CategoryColor = keyof typeof CATEGORY_COLORS
 const COLOR_KEYS = Object.keys(CATEGORY_COLORS) as CategoryColor[]
 
-/** Ready-made "when to buy" choices, most urgent first (also the order of the "ต้องซื้อก่อน" sort). */
-export const WHEN = {
-  sale: { label: 'รอลดราคา', color: '#ff9500' },
-  broken: { label: 'รอของเดิมพัง', color: '#ac8e68' },
-  later: { label: 'ซื้อทีหลังได้', color: '#8e8e93' },
-} as const
-export type WhenKey = keyof typeof WHEN
-export const WHEN_KEYS = Object.keys(WHEN) as WhenKey[]
-const CUSTOM_WHEN_COLOR = '#5e5ce6'
+/** A "when to buy" tag (รอของเดิมพัง, รอเงินเดือนออก, …). Its order is the "ต้องซื้อก่อน" sort order. */
+export interface Tag {
+  id: string
+  label: string
+  color: string
+  updatedAt: number
+}
 
-/** Label and color for a wish's `when`; null when not set. Free text keeps its own words. */
-export function whenInfo(when: string) {
-  if (!when) return null
-  return when in WHEN ? WHEN[when as WhenKey] : { label: when, color: CUSTOM_WHEN_COLOR }
-}
-/** Sort rank: presets in urgency order, then custom notes, then unset. */
-export function whenRank(when: string) {
-  const i = WHEN_KEYS.indexOf(when as WhenKey)
-  return i >= 0 ? i : when ? WHEN_KEYS.length : WHEN_KEYS.length + 1
-}
+/**
+ * Tags every device starts with (once); they can be deleted like any other.
+ * updatedAt 1 so a deletion made on another device always wins over a fresh start.
+ */
+const STARTER_TAGS: Tag[] = [
+  { id: 'broken', label: 'รอของเดิมพัง', color: '#ac8e68', updatedAt: 1 },
+  { id: 'later', label: 'ซื้อทีหลังได้', color: '#8e8e93', updatedAt: 1 },
+]
+export const TAG_COLOR = '#5e5ce6'
+/** Presets from older versions, now gone: "now" (ซื้อเลย) and "sale" (รอลดราคา). */
+const REMOVED_WHEN = ['now', 'sale']
+/** A tag made from the user's own words gets an id from that text, so every device agrees on it. */
+export const tagIdFor = (label: string) => 't:' + label.trim().slice(0, 40)
+const tagLabelFor = (id: string) => id.startsWith('t:') ? id.slice(2) : STARTER_TAGS.find(t => t.id === id)?.label ?? id
 
 const KEY = 'wishlist:v1'
 const CAT_KEY = 'wishlist:categories:v1'
+const TAG_KEY = 'wishlist:tags:v1'
 const TOMB_KEY = 'wishlist:tombstones:v1'
+
+/** `when` as a tag id: starter ids stay, older free text becomes that text's tag id. */
+function cleanWhen(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  const v = raw.trim()
+  if (!v || REMOVED_WHEN.includes(v)) return ''
+  if (v.startsWith('t:') || STARTER_TAGS.some(t => t.id === v)) return v.slice(0, 42)
+  return tagIdFor(v)
+}
+
+function cleanTag(raw: any): Tag | null {
+  if (!raw || typeof raw.id !== 'string' || !raw.id) return null
+  return {
+    id: raw.id,
+    label: String(raw.label || tagLabelFor(raw.id)).slice(0, 40),
+    color: typeof raw.color === 'string' && /^#[0-9a-f]{6}$/i.test(raw.color) ? raw.color : TAG_COLOR,
+    updatedAt: Number(raw.updatedAt) || 0,
+  }
+}
 
 const isUrl = (s: unknown): s is string => typeof s === 'string' && /^https?:\/\//i.test(s)
 export const newId = (prefix: string) => prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -119,8 +141,7 @@ function cleanWish(raw: any): Wish | null {
     shops: Array.isArray(raw.shops) ? raw.shops.filter(isUrl) : [],
     note: String(raw.note || ''),
     cat: typeof raw.cat === 'string' ? raw.cat : '',
-    // "now" (ซื้อเลย) was a preset that's since been removed.
-    when: typeof raw.when === 'string' && raw.when !== 'now' ? raw.when.trim().slice(0, 40) : '',
+    when: cleanWhen(raw.when),
     star: !!raw.star,
     prices: cleanPrices(raw.prices),
     parent: typeof raw.parent === 'string' && raw.parent !== raw.id ? raw.parent : '',
@@ -170,11 +191,27 @@ function persist(key: string, value: unknown) {
 function createStore() {
   const items = ref<Wish[]>(read(KEY, cleanWish, () => []))
   const categories = ref<Category[]>(read(CAT_KEY, cleanCategory, () => []))
+  // First run on this device: start with the starter tags.
+  const tags = ref<Tag[]>(read(TAG_KEY, cleanTag, () => STARTER_TAGS.map(t => ({ ...t }))))
 
   const tombstones = ref<Tombstone[]>(read(TOMB_KEY, t => (t?.id && t?.kind ? t as Tombstone : null), () => []))
 
+  /** Items can point at a tag this device hasn't heard of yet (older free text, another device): add it. */
+  function ensureTags() {
+    const known = new Set(tags.value.map(t => t.id))
+    const buried = new Set(tombstones.value.filter(t => t.kind === 'tag').map(t => t.id))
+    for (const w of items.value) {
+      if (w.when && !known.has(w.when) && !buried.has(w.when)) {
+        tags.value.push({ id: w.when, label: tagLabelFor(w.when), color: STARTER_TAGS.find(t => t.id === w.when)?.color ?? TAG_COLOR, updatedAt: 1 })
+        known.add(w.when)
+      }
+    }
+  }
+  ensureTags()
+
   watch(items, v => persist(KEY, v), { deep: true })
   watch(categories, v => persist(CAT_KEY, v), { deep: true })
+  watch(tags, v => persist(TAG_KEY, v), { deep: true })
   watch(tombstones, v => persist(TOMB_KEY, v), { deep: true })
 
   // Every edit made here (not ones coming back from the sheet) tells the sync to send.
@@ -265,7 +302,40 @@ function createStore() {
     return items.value.filter(w => w.parent === id).sort((a, b) => a.created - b.created)
   }
 
-  /** What the sync sends: every item and category plus pending deletions. */
+  /** Add a tag from the user's own words (or return the existing one with the same text). */
+  function addTag(label: string): Tag {
+    const id = tagIdFor(label)
+    const found = tags.value.find(t => t.id === id)
+    if (found) return found
+    const t = { id, label: label.trim().slice(0, 40), color: TAG_COLOR, updatedAt: Date.now() }
+    tags.value.push(t)
+    tombstones.value = tombstones.value.filter(x => !(x.kind === 'tag' && x.id === id))
+    changed()
+    return t
+  }
+  /** Delete a tag everywhere; items that had it just lose it. */
+  function removeTag(id: string) {
+    tags.value = tags.value.filter(t => t.id !== id)
+    bury('tag', id)
+    const now = Date.now()
+    for (const w of items.value) {
+      if (w.when === id) {
+        w.when = ''
+        w.updatedAt = now
+      }
+    }
+    changed()
+  }
+  function tagOf(w: Wish) {
+    return w.when ? tags.value.find(t => t.id === w.when) : undefined
+  }
+  /** "ต้องซื้อก่อน" order: tags in list order, then untagged. */
+  function tagRank(w: Wish) {
+    const i = w.when ? tags.value.findIndex(t => t.id === w.when) : -1
+    return i >= 0 ? i : tags.value.length
+  }
+
+  /** What the sync sends: everything plus pending deletions. */
   function syncPayload() {
     const dead = (kind: Tombstone['kind']) =>
       tombstones.value.filter(t => t.kind === kind).map(t => ({ id: t.id, updatedAt: t.updatedAt, deleted: true }))
@@ -273,15 +343,21 @@ function createStore() {
       tombstones: tombstones.value.map(t => ({ ...t })),
       wishes: [...items.value.map(w => ({ ...w, shops: [...w.shops], prices: w.prices.map(p => ({ ...p })) })), ...dead('wish')],
       categories: [...categories.value.map(c => ({ ...c })), ...dead('category')],
+      tags: [...tags.value.map(t => ({ ...t })), ...dead('tag')],
     }
   }
 
   /** Merge what the sheet sent back; the copy with the later updatedAt wins. */
-  function applyRemote(remote: { wishes: any[], categories: any[] }, sentTombstones: Tombstone[]) {
+  function applyRemote(remote: { wishes: any[], categories: any[], tags?: any[] }, sentTombstones: Tombstone[]) {
     items.value = mergeRemote(items.value, remote.wishes, cleanWish)
     categories.value = mergeRemote(categories.value, remote.categories, cleanCategory)
+    // An older sheet script doesn't know about tags yet: keep them, and keep their deletions queued.
+    if (Array.isArray(remote.tags)) tags.value = mergeRemote(tags.value, remote.tags, cleanTag)
+    ensureTags()
     // Deletions the sheet now has can be forgotten; ones made during the request stay queued.
-    const sent = new Set(sentTombstones.map(t => `${t.id}@${t.updatedAt}`))
+    const sent = new Set(sentTombstones
+      .filter(t => t.kind !== 'tag' || Array.isArray(remote.tags))
+      .map(t => `${t.id}@${t.updatedAt}`))
     tombstones.value = tombstones.value.filter(t => !sent.has(`${t.id}@${t.updatedAt}`))
   }
 
@@ -289,12 +365,14 @@ function createStore() {
   function clearLocal() {
     items.value = []
     categories.value = []
+    tags.value = []
     tombstones.value = []
   }
 
   return {
-    items, categories, upsert, remove, toggle, toggleStar,
+    items, categories, tags, upsert, remove, toggle, toggleStar,
     addCategory, updateCategory, removeCategory, categoryOf, parentOf, childrenOf, nextColor,
+    addTag, removeTag, tagOf, tagRank,
     syncPayload, applyRemote, clearLocal,
   }
 }
