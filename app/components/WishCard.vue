@@ -21,7 +21,8 @@ const kidPrice = (w: Wish) => {
   return t !== null ? baht(t) : money(w.price, w.currency)
 }
 
-const confirming = ref(false)
+const imageBroken = ref(false)
+watch(() => props.wish.image, () => { imageBroken.value = false })
 const { rates } = useRates()
 const thb = computed(() => priceThb(props.wish, rates.value))
 const isForeign = computed(() => props.wish.currency !== 'THB' && props.wish.price > 0)
@@ -114,7 +115,7 @@ const links = computed(() => [
           type="button"
           class="grid size-8 place-items-center rounded-full text-sub transition hover:bg-red/10 hover:text-red active:scale-90"
           aria-label="ลบ"
-          @click="confirming = true"
+          @click="emit('remove')"
         >
           <svg viewBox="0 0 20 20" class="size-4 fill-none stroke-current stroke-[1.6]" aria-hidden="true"><path d="M4 6h12M8 6V4.5h4V6M5.5 6l.8 10h7.4l.8-10" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
@@ -124,6 +125,8 @@ const links = computed(() => [
 
     <!-- Body: price, note and shop buttons on one rhythm -->
     <div class="flex flex-col pl-8">
+      <div class="flex items-start gap-3">
+      <div class="min-w-0 flex-1">
       <!-- Foreign prices show their baht value first; until a rate loads, the original amount -->
       <p class="mt-2.5 text-[24px] leading-none font-semibold tracking-[-0.02em] tabular-nums">
         {{ !wish.price ? '—' : thb !== null ? baht(thb) : money(wish.price, wish.currency) }}
@@ -136,6 +139,18 @@ const links = computed(() => [
         ต่ำสุดที่เคยเจอ {{ money(low.price, wish.currency) }} · {{ lowDate }}
       </p>
       <p v-if="wish.note" class="mt-1.5 line-clamp-2 text-[14px] leading-snug break-words text-sub">{{ wish.note }}</p>
+      </div>
+      <!-- Product picture; a link that stops loading just hides it -->
+      <img
+        v-if="wish.image && !imageBroken"
+        :src="wish.image"
+        alt=""
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        class="mt-2.5 size-16 shrink-0 rounded-xl bg-white object-contain ring-1 ring-line"
+        @error="imageBroken = true"
+      >
+      </div>
 
       <!-- Bought together: a receipt-style list under the price, then the whole set's total -->
       <div v-if="kids.length" class="mt-3.5">
@@ -195,11 +210,6 @@ const links = computed(() => [
         </a>
       </div>
 
-      <div v-if="confirming" class="mt-3.5 flex items-center gap-3 rounded-xl bg-red/8 px-3 py-2 text-[13px]">
-        <span class="min-w-0 flex-1 text-ink">{{ kids.length ? 'ลบรายการนี้? ของที่ซื้อคู่จะแยกเป็นการ์ดของตัวเอง' : 'ลบรายการนี้?' }}</span>
-        <button type="button" class="shrink-0 font-medium text-sub transition hover:text-ink" @click="confirming = false">ยกเลิก</button>
-        <button type="button" class="shrink-0 font-semibold text-red transition hover:opacity-70" @click="emit('remove')">ลบ</button>
-      </div>
     </div>
   </li>
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { Wish } from '~/composables/useWishes'
+import type { Removed, Wish } from '~/composables/useWishes'
 
-const { items, categories, upsert, remove, toggle, toggleStar, categoryOf, parentOf, childrenOf, tagRank } = useWishes()
+const { items, categories, upsert, remove, restore, toggle, toggleStar, categoryOf, parentOf, childrenOf, tagRank, tagOf } = useWishes()
 const { rates } = useRates()
 /** Baht value for totals and sorting; a foreign price with no rate yet counts as 0 */
 const thb = (w: Wish) => priceThb(w, rates.value) ?? 0
@@ -66,9 +66,23 @@ const heading = computed(() => currentCat.value?.name
   ?? ({ [NO_CATEGORY]: 'ไม่มีหมวด', [STARRED]: 'ติดดาว' } as Record<string, string>)[catFilter.value]
   ?? 'ของที่อยากได้')
 
+// Search: name, note, shops, category, tag; a card also matches through what's bought with it.
+const query = ref('')
+const searchEl = ref<HTMLInputElement>()
+const words = computed(() => query.value.trim().toLowerCase().split(/\s+/).filter(Boolean))
+function textOf(w: Wish) {
+  return [w.name, w.note, categoryOf(w)?.name, tagOf(w)?.label, ...w.shops.map(shopName), w.link ? 'official' : '']
+    .filter(Boolean).join(' ').toLowerCase()
+}
+const matches = (w: Wish) => {
+  if (!words.value.length) return true
+  const text = [textOf(w), ...childrenOf(w.id).map(textOf)].join(' ')
+  return words.value.every(q => text.includes(q))
+}
+
 const view = computed(() => {
   // Accessories show inside their main item's card, not as cards of their own.
-  const list = scoped.value.filter(i => !parentOf(i) && (filter.value === 'all' || (filter.value === 'done' ? i.done : !i.done)))
+  const list = scoped.value.filter(i => !parentOf(i) && (filter.value === 'all' || (filter.value === 'done' ? i.done : !i.done)) && matches(i))
   const cmp: Record<Sort, (a: Wish, b: Wish) => number> = {
     new: (a, b) => b.created - a.created,
     when: (a, b) => (tagRank(a) - tagRank(b)) || (b.created - a.created),
@@ -98,9 +112,21 @@ function closeForm() {
   editing.value = null
   modalOpen.value = false
 }
+// A delete happens right away; the toast below can bring it back for a few seconds.
+const undo = ref<{ removed: Removed, kids: number } | null>(null)
+let undoTimer: ReturnType<typeof setTimeout> | undefined
 function onRemove(id: string) {
   if (editing.value?.id === id) closeForm()
-  remove(id)
+  const removed = remove(id)
+  if (!removed) return
+  undo.value = { removed, kids: removed.children.length }
+  clearTimeout(undoTimer)
+  undoTimer = setTimeout(() => { undo.value = null }, 6000)
+}
+function undoRemove() {
+  if (undo.value) restore(undo.value.removed)
+  undo.value = null
+  clearTimeout(undoTimer)
 }
 async function openCats() {
   catsOpen.value = true
@@ -121,6 +147,20 @@ async function openSync() {
 
 watch([modalOpen, catsOpen, syncOpen], ([a, b, c]) => { document.documentElement.style.overflow = a || b || c ? 'hidden' : '' })
 const onKey = (e: KeyboardEvent) => {
+  // "/" or Ctrl/⌘+K jumps to search (not while typing somewhere or with a sheet open)
+  const typing = e.target instanceof HTMLElement && e.target.closest('input, textarea, [contenteditable]')
+  const sheetOpen = modalOpen.value || catsOpen.value || syncOpen.value
+  if (connected.value && !sheetOpen && ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing))) {
+    e.preventDefault()
+    searchEl.value?.focus()
+    searchEl.value?.select()
+    return
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && undo.value && !typing) {
+    e.preventDefault()
+    undoRemove()
+    return
+  }
   if (e.key !== 'Escape') return
   if (modalOpen.value) closeForm()
   else if (catsOpen.value) catsOpen.value = false
@@ -182,7 +222,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <span class="min-w-0">{{ heading }}</span>
         </h1>
         <p class="mt-1 text-[15px] leading-snug text-sub lg:text-[17px]">
-          <template v-if="catFilter && scoped.length">ทั้งชุด {{ scoped.length }} ชิ้น รวม {{ baht(total + doneTotal) }}</template>
+          <template v-if="catFilter && scoped.length">
+            {{ scoped.length }} ชิ้น · รวม <span class="font-medium text-ink tabular-nums">{{ baht(total + doneTotal) }}</span>
+            <template v-if="doneCount && want.length"> · ยังขาด <span class="tabular-nums">{{ baht(total) }}</span></template>
+            <template v-else-if="!want.length"> · ได้ครบแล้ว</template>
+          </template>
           <template v-else-if="catFilter">ยังไม่มีของในหมวดนี้</template>
           <template v-else>จดไว้ที่เดียว ได้มาแล้วก็ติ๊กออก</template>
         </p>
@@ -192,7 +236,34 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <section class="min-w-0">
           <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SegmentedControl v-model="filter" :options="filterOptions" label="แสดง" />
-            <PopupMenu v-model="sort" :options="sortOptions" label="เรียง" align-right compact class="self-end sm:self-auto" />
+            <div class="flex items-center gap-2">
+              <label class="group/search relative flex h-8 min-w-0 flex-1 items-center rounded-full bg-fill transition focus-within:bg-card focus-within:ring-1 focus-within:ring-accent sm:w-60 sm:flex-none">
+                <svg viewBox="0 0 20 20" class="pointer-events-none absolute left-2.5 size-4 fill-none stroke-sub stroke-[1.8]" aria-hidden="true">
+                  <circle cx="8.5" cy="8.5" r="5.5" /><path d="M13 13l4 4" stroke-linecap="round" />
+                </svg>
+                <input
+                  ref="searchEl"
+                  v-model="query"
+                  type="search"
+                  class="h-full min-w-0 flex-1 bg-transparent pr-8 pl-8 text-[14px] outline-none placeholder:text-sub/70 [&::-webkit-search-cancel-button]:hidden"
+                  placeholder="ค้นหา"
+                  aria-label="ค้นหา"
+                  autocomplete="off"
+                  @keydown.esc.stop="query ? (query = '') : searchEl?.blur()"
+                >
+                <button
+                  v-if="query"
+                  type="button"
+                  class="absolute right-1.5 grid size-5 place-items-center rounded-full bg-sub/40 text-bg transition hover:bg-sub/60"
+                  aria-label="ล้างคำค้น"
+                  @click="query = ''; searchEl?.focus()"
+                >
+                  <svg viewBox="0 0 12 12" class="size-2.5 stroke-current stroke-2" aria-hidden="true"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5" stroke-linecap="round" /></svg>
+                </button>
+                <kbd v-else class="pointer-events-none absolute right-2 hidden rounded border border-line px-1.5 text-[11px] leading-4 text-sub lg:block group-focus-within/search:hidden">/</kbd>
+              </label>
+              <PopupMenu v-model="sort" :options="sortOptions" label="เรียง" align-right compact class="shrink-0" />
+            </div>
           </div>
 
           <!-- items-start: each card is as tall as its own content, not the tallest in its row -->
@@ -216,6 +287,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <svg viewBox="0 0 24 24" class="size-10 fill-none stroke-sub/60 stroke-[1.4]" aria-hidden="true">
               <rect x="3.5" y="9" width="17" height="11.5" rx="2" /><path d="M2.5 9h19M12 9v11.5M12 9c-1.5-3.5-6-4.5-6-1.8C6 9 12 9 12 9zm0 0c1.5-3.5 6-4.5 6-1.8C18 9 12 9 12 9z" stroke-linejoin="round" />
             </svg>
+            <template v-if="words.length">
+              <p class="mt-4 text-[19px] font-semibold tracking-[-0.01em]">ไม่เจอ “{{ query.trim() }}”</p>
+              <p class="mt-1 text-[15px] text-sub">
+                {{ catFilter || filter !== 'all' ? 'ลองเลือกแสดงทั้งหมด หรือปิดตัวกรองหมวดดู' : 'ลองคำอื่น หรือพิมพ์แค่บางส่วนของชื่อ' }}
+              </p>
+              <button
+                type="button"
+                class="mt-5 rounded-full bg-fill px-5 py-2 text-[15px] font-medium transition hover:bg-line active:scale-95"
+                @click="query = ''"
+              >
+                ล้างคำค้น
+              </button>
+            </template>
+            <template v-else>
             <p class="mt-4 text-[19px] font-semibold tracking-[-0.01em]">
               {{ filter === 'done' ? 'ยังไม่มีของที่ได้มา' : catFilter === STARRED ? 'ยังไม่มีของที่ติดดาว' : (catFilter ? 'ยังไม่มีของในหมวดนี้' : 'ยังไม่มีของในสมุด') }}
             </p>
@@ -232,11 +317,39 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             >
               + เพิ่มของใหม่
             </button>
+            </template>
           </div>
         </section>
       </div>
       </template>
     </main>
+
+    <!-- Undo after a delete -->
+    <Transition
+      enter-from-class="translate-y-4 opacity-0"
+      leave-to-class="translate-y-4 opacity-0"
+      enter-active-class="transition duration-200 ease-out"
+      leave-active-class="transition duration-150 ease-in"
+    >
+      <div
+        v-if="undo"
+        class="fixed inset-x-0 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-4"
+        role="status"
+      >
+        <div class="flex max-w-full items-center gap-4 rounded-full bg-ink py-2.5 pr-2.5 pl-5 text-[14px] text-bg shadow-[0_12px_32px_-8px_rgb(0_0_0/0.35)]">
+          <span class="min-w-0 truncate">
+            ลบ “{{ undo.removed.wish.name }}” แล้ว<span v-if="undo.kids" class="opacity-70"> · ของที่ซื้อคู่ {{ undo.kids }} ชิ้นแยกออกมา</span>
+          </span>
+          <button
+            type="button"
+            class="shrink-0 rounded-full bg-bg/15 px-3.5 py-1 font-semibold transition hover:bg-bg/25 active:scale-95"
+            @click="undoRemove"
+          >
+            เลิกทำ
+          </button>
+        </div>
+      </div>
+    </Transition>
 
     <SheetModal :open="modalOpen" :label="editing ? 'แก้ไข' : 'เพิ่มของใหม่'" @close="closeForm">
       <WishForm

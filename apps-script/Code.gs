@@ -4,7 +4,7 @@
 
 // คอลัมน์ใหม่ต่อท้ายเสมอ ข้อมูลเก่าในชีตจะได้ไม่เลื่อนช่อง
 const SHEETS = {
-  wishes: ['id', 'name', 'price', 'currency', 'link', 'shops', 'note', 'cat', 'done', 'created', 'updatedAt', 'deleted', 'when', 'star', 'prices', 'parent'],
+  wishes: ['id', 'name', 'price', 'currency', 'link', 'shops', 'note', 'cat', 'done', 'created', 'updatedAt', 'deleted', 'when', 'star', 'prices', 'parent', 'image'],
   categories: ['id', 'name', 'color', 'updatedAt', 'deleted'],
   // ป้าย "จะซื้อเมื่อไหร่" ที่เพิ่ม/ลบเองได้
   tags: ['id', 'label', 'color', 'updatedAt', 'deleted'],

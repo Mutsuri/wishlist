@@ -22,6 +22,8 @@ export interface Wish {
   prices: PricePoint[]
   /** Id of the main item this one is bought together with (e.g. a pencil for an iPad), or '' */
   parent: string
+  /** Product picture (a URL to an image on the web), or '' */
+  image: string
   done: boolean
   created: number
   /** Last edit (ms); the Google Sheet sync keeps whichever copy changed last */
@@ -48,6 +50,12 @@ export interface Category {
   name: string
   color: CategoryColor
   updatedAt: number
+}
+
+/** A deleted item and the accessories it had, kept so the delete can be undone */
+export interface Removed {
+  wish: Wish
+  children: string[]
 }
 
 /** A deletion still to be sent to the Google Sheet */
@@ -145,6 +153,7 @@ function cleanWish(raw: any): Wish | null {
     star: !!raw.star,
     prices: cleanPrices(raw.prices),
     parent: typeof raw.parent === 'string' && raw.parent !== raw.id ? raw.parent : '',
+    image: isUrl(raw.image) ? raw.image : '',
     done: !!raw.done,
     created: Number(raw.created) || 0,
     updatedAt: Number(raw.updatedAt) || Number(raw.created) || 0,
@@ -232,14 +241,33 @@ function createStore() {
     else items.value.push(stamped)
     changed()
   }
-  function remove(id: string) {
+  /** Delete an item; returns what restore() needs to undo it. */
+  function remove(id: string): Removed | null {
+    const gone = items.value.find(x => x.id === id)
+    if (!gone) return null
     items.value = items.value.filter(x => x.id !== id)
     bury('wish', id)
     // Things bought together with it stay, as items of their own.
     const now = Date.now()
+    const children: string[] = []
     for (const w of items.value) {
       if (w.parent === id) {
         w.parent = ''
+        w.updatedAt = now
+        children.push(w.id)
+      }
+    }
+    changed()
+    return { wish: { ...gone, shops: [...gone.shops], prices: gone.prices.map(p => ({ ...p })) }, children }
+  }
+  /** Undo a delete. A fresh updatedAt makes it win over the deletion, even if the sheet already has it. */
+  function restore(r: Removed) {
+    const now = Date.now()
+    tombstones.value = tombstones.value.filter(t => !(t.kind === 'wish' && t.id === r.wish.id))
+    if (!items.value.some(x => x.id === r.wish.id)) items.value.push({ ...r.wish, updatedAt: now })
+    for (const w of items.value) {
+      if (r.children.includes(w.id) && !w.parent) {
+        w.parent = r.wish.id
         w.updatedAt = now
       }
     }
@@ -370,7 +398,7 @@ function createStore() {
   }
 
   return {
-    items, categories, tags, upsert, remove, toggle, toggleStar,
+    items, categories, tags, upsert, remove, restore, toggle, toggleStar,
     addCategory, updateCategory, removeCategory, categoryOf, parentOf, childrenOf, nextColor,
     addTag, removeTag, tagOf, tagRank,
     syncPayload, applyRemote, clearLocal,
