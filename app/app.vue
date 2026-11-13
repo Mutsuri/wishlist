@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Wish } from '~/composables/useWishes'
 
-const { items, categories, upsert, remove, toggle, toggleStar, categoryOf } = useWishes()
+const { items, categories, upsert, remove, toggle, toggleStar, categoryOf, parentOf, childrenOf } = useWishes()
 const { rates } = useRates()
 /** Baht value for totals and sorting; a foreign price with no rate yet counts as 0 */
 const thb = (w: Wish) => priceThb(w, rates.value) ?? 0
@@ -67,7 +67,8 @@ const heading = computed(() => currentCat.value?.name
   ?? 'ของที่อยากได้')
 
 const view = computed(() => {
-  const list = scoped.value.filter(i => filter.value === 'all' || (filter.value === 'done' ? i.done : !i.done))
+  // Accessories show inside their main item's card, not as cards of their own.
+  const list = scoped.value.filter(i => !parentOf(i) && (filter.value === 'all' || (filter.value === 'done' ? i.done : !i.done)))
   const cmp: Record<Sort, (a: Wish, b: Wish) => number> = {
     new: (a, b) => b.created - a.created,
     when: (a, b) => (whenRank(a.when) - whenRank(b.when)) || (b.created - a.created),
@@ -78,8 +79,11 @@ const view = computed(() => {
   return [...list].sort((a, b) => (Number(a.done) - Number(b.done)) || (Number(b.star) - Number(a.star)) || cmp[sort.value](a, b))
 })
 
-async function openForm(w: Wish | null) {
+/** Main item preselected when adding an accessory from a card */
+const newParent = ref('')
+async function openForm(w: Wish | null, parentId = '') {
   editing.value = w ? { ...w, shops: [...w.shops] } : null
+  newParent.value = w ? '' : parentId
   formKey.value++
   modalOpen.value = true
   await nextTick()
@@ -199,8 +203,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               :wish="w"
               :category="catFilter ? undefined : categoryOf(w)"
               @toggle="toggle(w.id)"
+              :children="childrenOf(w.id)"
               @star="toggleStar(w.id)"
               @edit="openForm(w)"
+              @add-child="openForm(null, w.id)"
+              @toggle-child="toggle($event)"
+              @edit-child="openForm($event)"
               @remove="onRemove(w.id)"
             />
           </ul>
@@ -237,6 +245,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         :item="editing"
         :default-cat="currentCat?.id"
         :default-star="catFilter === STARRED"
+        :default-parent="newParent"
         @save="onSave"
         @cancel="closeForm"
       />

@@ -20,6 +20,8 @@ export interface Wish {
   star: boolean
   /** Every price seen for this item (in its own currency), oldest first */
   prices: PricePoint[]
+  /** Id of the main item this one is bought together with (e.g. a pencil for an iPad), or '' */
+  parent: string
   done: boolean
   created: number
   /** Last edit (ms); the Google Sheet sync keeps whichever copy changed last */
@@ -121,6 +123,7 @@ function cleanWish(raw: any): Wish | null {
     when: typeof raw.when === 'string' && raw.when !== 'now' ? raw.when.trim().slice(0, 40) : '',
     star: !!raw.star,
     prices: cleanPrices(raw.prices),
+    parent: typeof raw.parent === 'string' && raw.parent !== raw.id ? raw.parent : '',
     done: !!raw.done,
     created: Number(raw.created) || 0,
     updatedAt: Number(raw.updatedAt) || Number(raw.created) || 0,
@@ -195,6 +198,14 @@ function createStore() {
   function remove(id: string) {
     items.value = items.value.filter(x => x.id !== id)
     bury('wish', id)
+    // Things bought together with it stay, as items of their own.
+    const now = Date.now()
+    for (const w of items.value) {
+      if (w.parent === id) {
+        w.parent = ''
+        w.updatedAt = now
+      }
+    }
     changed()
   }
   function toggle(id: string) {
@@ -245,6 +256,14 @@ function createStore() {
   function categoryOf(w: Wish) {
     return w.cat ? categories.value.find(c => c.id === w.cat) : undefined
   }
+  /** The main item `w` is bought with, if it still exists (one level only). */
+  function parentOf(w: Wish) {
+    return w.parent ? items.value.find(x => x.id === w.parent && !x.parent) : undefined
+  }
+  /** Items bought together with `id`, oldest first. */
+  function childrenOf(id: string) {
+    return items.value.filter(w => w.parent === id).sort((a, b) => a.created - b.created)
+  }
 
   /** What the sync sends: every item and category plus pending deletions. */
   function syncPayload() {
@@ -275,7 +294,7 @@ function createStore() {
 
   return {
     items, categories, upsert, remove, toggle, toggleStar,
-    addCategory, updateCategory, removeCategory, categoryOf, nextColor,
+    addCategory, updateCategory, removeCategory, categoryOf, parentOf, childrenOf, nextColor,
     syncPayload, applyRemote, clearLocal,
   }
 }

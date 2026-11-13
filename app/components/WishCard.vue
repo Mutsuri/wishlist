@@ -5,8 +5,21 @@ const props = defineProps<{
   wish: Wish
   /** Shown as a tag; omit when the list is already filtered to this category */
   category?: Category
+  /** Things bought together with this item, listed inside the card */
+  children?: Wish[]
 }>()
-const emit = defineEmits<{ toggle: [], star: [], edit: [], remove: [] }>()
+const emit = defineEmits<{
+  toggle: [], star: [], edit: [], remove: [],
+  addChild: [], toggleChild: [id: string], editChild: [child: Wish],
+}>()
+const kids = computed(() => props.children ?? [])
+/** Whole set (this item + what's bought with it) in baht */
+const setTotal = computed(() => [props.wish, ...kids.value].reduce((a, w) => a + (priceThb(w, rates.value) ?? 0), 0))
+const kidPrice = (w: Wish) => {
+  if (!w.price) return '—'
+  const t = priceThb(w, rates.value)
+  return t !== null ? baht(t) : money(w.price, w.currency)
+}
 
 const confirming = ref(false)
 const { rates } = useRates()
@@ -80,6 +93,17 @@ const links = computed(() => [
         <button
           type="button"
           class="grid size-8 place-items-center rounded-full text-sub transition hover:bg-fill hover:text-ink active:scale-90"
+          aria-label="เพิ่มของที่ซื้อคู่กัน"
+          title="เพิ่มของที่ซื้อคู่กัน"
+          @click="emit('addChild')"
+        >
+          <svg viewBox="0 0 20 20" class="size-4 fill-none stroke-current stroke-[1.6]" aria-hidden="true">
+            <path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.9.9M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l.9-.9" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="grid size-8 place-items-center rounded-full text-sub transition hover:bg-fill hover:text-ink active:scale-90"
           aria-label="แก้ไข"
           @click="emit('edit')"
         >
@@ -134,8 +158,40 @@ const links = computed(() => [
         </a>
       </div>
 
+      <!-- Bought together: accessories listed under the main item, with the set's total -->
+      <div v-if="kids.length" class="mt-4 rounded-xl bg-fill/60 px-3 py-2">
+        <p class="pb-1 text-[11px] font-medium tracking-wide text-sub">ซื้อคู่กัน</p>
+        <ul class="divide-y divide-line">
+          <li v-for="k in kids" :key="k.id" class="group/kid flex min-h-9 items-center gap-2.5 py-1.5" :class="k.done && 'opacity-55'">
+            <button
+              type="button"
+              class="grid size-4 shrink-0 place-items-center rounded-full border-[1.5px] transition hover:scale-110 active:scale-90"
+              :class="k.done ? 'border-accent bg-accent' : 'border-sub/40 hover:border-accent'"
+              :aria-label="k.done ? `ย้าย ${k.name} กลับไปยังไม่ได้` : `ทำเครื่องหมายว่าได้ ${k.name} แล้ว`"
+              @click="emit('toggleChild', k.id)"
+            >
+              <svg v-if="k.done" viewBox="0 0 24 24" class="size-2.5 fill-none stroke-white stroke-[4]" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+            <button
+              type="button"
+              class="min-w-0 flex-1 truncate text-left text-[14px] font-medium transition hover:text-accent"
+              :class="k.done && 'line-through decoration-sub/50'"
+              :title="`แก้ไข ${k.name}`"
+              @click="emit('editChild', k)"
+            >
+              {{ k.name }}
+            </button>
+            <span class="shrink-0 text-[14px] font-semibold tabular-nums">{{ kidPrice(k) }}</span>
+          </li>
+        </ul>
+        <p class="flex items-baseline justify-between border-t border-line pt-1.5 text-[12px] text-sub">
+          <span>รวมทั้งชุด</span>
+          <span class="text-[14px] font-semibold text-ink tabular-nums">{{ baht(setTotal) }}</span>
+        </p>
+      </div>
+
       <div v-if="confirming" class="mt-3.5 flex items-center gap-3 rounded-xl bg-red/8 px-3 py-2 text-[13px]">
-        <span class="min-w-0 flex-1 truncate text-ink">ลบรายการนี้?</span>
+        <span class="min-w-0 flex-1 text-ink">{{ kids.length ? 'ลบรายการนี้? ของที่ซื้อคู่จะแยกเป็นการ์ดของตัวเอง' : 'ลบรายการนี้?' }}</span>
         <button type="button" class="shrink-0 font-medium text-sub transition hover:text-ink" @click="confirming = false">ยกเลิก</button>
         <button type="button" class="shrink-0 font-semibold text-red transition hover:opacity-70" @click="emit('remove')">ลบ</button>
       </div>

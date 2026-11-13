@@ -7,12 +7,17 @@ const props = defineProps<{
   defaultCat?: string
   /** New items start starred when added from the starred view */
   defaultStar?: boolean
+  /** Main item preselected when adding an accessory from its card */
+  defaultParent?: string
 }>()
 const emit = defineEmits<{ save: [Wish], cancel: [] }>()
-const { categories, addCategory } = useWishes()
+const { items, categories, addCategory, childrenOf } = useWishes()
 
+const startParent = props.item?.parent ?? props.defaultParent ?? ''
 const f = reactive({
-  cat: props.item?.cat ?? props.defaultCat ?? '',
+  parent: startParent,
+  // An accessory starts in its main item's category
+  cat: props.item?.cat ?? (startParent ? items.value.find(w => w.id === startParent)?.cat : undefined) ?? props.defaultCat ?? '',
   when: props.item?.when ?? '',
   name: props.item?.name ?? '',
   price: props.item?.price ? String(props.item.price) : '',
@@ -28,6 +33,16 @@ const shopsEl = ref<HTMLElement>()
 const title = computed(() => props.item ? 'แก้ไข' : 'เพิ่มของใหม่')
 
 defineExpose({ focus: () => nameEl.value?.focus() })
+
+// "Buy together with": one level only, so an item that already has accessories can't be one.
+const hasChildren = computed(() => !!props.item && childrenOf(props.item.id).length > 0)
+const parentOptions = computed(() => [
+  { value: '', label: 'ไม่ซื้อคู่กับอะไร', short: 'ไม่มี' },
+  ...items.value
+    .filter(w => !w.parent && w.id !== props.item?.id)
+    .sort((a, b) => b.created - a.created)
+    .map(w => ({ value: w.id, label: w.name, short: w.name.length > 22 ? w.name.slice(0, 21) + '…' : w.name })),
+])
 
 const { rates, loading: rateLoading, failed: rateFailed, refresh: refreshRate } = useRates()
 // Accept pasted prices like "HK$1,129.00" or "¥12,800": keep only digits and the decimal point.
@@ -115,6 +130,7 @@ function submit() {
     cat: categories.value.some(c => c.id === f.cat) ? f.cat : '',
     when: f.when.trim().slice(0, 40),
     star: props.item?.star ?? props.defaultStar ?? false,
+    parent: !hasChildren.value && items.value.some(w => w.id === f.parent && !w.parent) ? f.parent : '',
     // The store adds the new price to this log when it changed.
     prices: f.prices,
     done: props.item?.done ?? false,
@@ -183,6 +199,21 @@ const groupLabel = 'px-4 pb-1.5 text-[13px] text-sub'
           </div>
         </div>
         <p class="px-4 pt-1.5 text-[13px] text-sub">แก้ราคาด้านบนแล้วบันทึก ราคาใหม่จะต่อท้ายรายการนี้เอง</p>
+      </div>
+
+      <!-- Bought together with a main item: shows inside that item's card -->
+      <div>
+        <div :class="group">
+          <div :class="row">
+            <span class="shrink-0 text-[15px]">ซื้อคู่กับ</span>
+            <span class="min-w-0 flex-1" />
+            <span v-if="hasChildren" class="text-[14px] text-sub">มีของซื้อคู่อยู่แล้ว</span>
+            <PopupMenu v-else v-model="f.parent" :options="parentOptions" label="ซื้อคู่กับ" hide-label align-right class="min-w-0" />
+          </div>
+        </div>
+        <p class="px-4 pt-1.5 text-[13px] text-sub">
+          {{ hasChildren ? 'ชิ้นนี้มีของที่ซื้อคู่กันอยู่ เลยไปซ้อนในชิ้นอื่นไม่ได้' : 'เช่น Apple Pencil คู่กับ iPad จะแสดงอยู่ในการ์ดของ iPad' }}
+        </p>
       </div>
 
       <div>
